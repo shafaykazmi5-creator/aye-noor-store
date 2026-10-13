@@ -82,15 +82,22 @@
     if (emptyState) emptyState.classList.toggle("hidden", matching.length > 0);
   }
 
-  function addToCart(sku) {
+  function addToCart(sku, requestedQty = 1) {
     const p = productMap.get(sku);
     if (!p || p.stock < 1) return;
-    const quantity = cart.get(sku) || 0;
-    if (quantity >= p.stock) return showToast("You've reached the sample stock limit.");
-    cart.set(sku, quantity + 1);
+    const addAmount = Math.max(1, Math.floor(Number(requestedQty) || 1));
+    const current = cart.get(sku) || 0;
+    if (current >= p.stock) return showToast("You've reached the sample stock limit.");
+    const nextQty = Math.min(p.stock, current + addAmount);
+    const added = nextQty - current;
+    cart.set(sku, nextQty);
     saveCart();
     renderCart();
-    showToast(`${p.name} added to your cart.`);
+    if (nextQty === p.stock && added < addAmount) {
+      showToast(`Added ${added} (${p.name} is at the sample stock limit).`);
+    } else {
+      showToast(`${added > 1 ? added + " × " : ""}${p.name} added to your cart.`);
+    }
   }
 
   function changeQuantity(sku, delta) {
@@ -116,13 +123,14 @@
       if (!p) return;
       const v = p.visual || { bg: "#e8d9ca", glyph: "#a98d73", mark: "✳" };
       const name = escapeHTML(p.name);
+      const href = p.slug ? `/product/${encodeURIComponent(p.slug)}` : "/shop";
       count += quantity;
       subtotal += p.salePrice * quantity;
 
       const row = document.createElement("div");
       row.className = "cart-line";
-      row.innerHTML = `<div class="cart-line-art" style="--productbg:${v.bg};--glyph:${v.glyph}" aria-hidden="true">${v.mark}</div>
-        <div><h4>${name}</h4><small>${money(p.salePrice)} each</small>
+      row.innerHTML = `<a href="${href}" class="cart-line-art" style="--productbg:${v.bg};--glyph:${v.glyph}" aria-hidden="true" tabindex="-1">${v.mark}</a>
+        <div><h4><a href="${href}" class="product-title-link">${name}</a></h4><small>${money(p.salePrice)} each</small>
         <div class="qty-control"><button type="button" aria-label="Decrease quantity of ${name}">−</button><span aria-label="Quantity">${quantity}</span><button type="button" aria-label="Increase quantity of ${name}">+</button></div>
         <button type="button" class="remove-line" aria-label="Remove ${name} from cart">Remove</button></div><div class="cart-line-total">${money(p.salePrice * quantity)}</div>`;
 
@@ -225,7 +233,50 @@
 
   document.addEventListener("click", event => {
     const addBtn = event.target.closest("[data-add-sku]");
-    if (addBtn) addToCart(addBtn.getAttribute("data-add-sku"));
+    if (addBtn) addToCart(addBtn.getAttribute("data-add-sku"), 1);
+  });
+
+  /* ---------- Product Detail Page Wiring ---------- */
+  const purchaseBox = document.querySelector("[data-detail-purchase]");
+  if (purchaseBox) {
+    const detailSku = purchaseBox.getAttribute("data-sku");
+    const maxStock = Math.max(1, Number(purchaseBox.getAttribute("data-max")) || 1);
+    const qtyInput = $("detailQtyInput");
+    const decBtn = $("detailQtyDec");
+    const incBtn = $("detailQtyInc");
+    const addBtn = $("detailAddBtn");
+
+    const clampQty = () => {
+      let val = Math.floor(Number(qtyInput.value) || 1);
+      if (val < 1) val = 1;
+      if (val > maxStock) {
+        val = maxStock;
+        showToast("You've reached the sample stock limit.");
+      }
+      qtyInput.value = String(val);
+      return val;
+    };
+
+    if (decBtn) decBtn.addEventListener("click", () => { qtyInput.value = String(Math.max(1, clampQty() - 1)); });
+    if (incBtn) incBtn.addEventListener("click", () => {
+      const current = clampQty();
+      if (current >= maxStock) showToast("You've reached the sample stock limit.");
+      else qtyInput.value = String(current + 1);
+    });
+    if (qtyInput) qtyInput.addEventListener("change", clampQty);
+    if (addBtn) addBtn.addEventListener("click", () => addToCart(detailSku, clampQty()));
+  }
+
+  const thumbs = [...document.querySelectorAll("[data-thumb-glyph]")];
+  thumbs.forEach(btn => {
+    btn.addEventListener("click", () => {
+      thumbs.forEach(other => {
+        other.classList.toggle("active", other === btn);
+        other.setAttribute("aria-pressed", other === btn ? "true" : "false");
+      });
+      if ($("stageGlyph")) $("stageGlyph").textContent = btn.getAttribute("data-thumb-glyph");
+      if ($("stageCaption")) $("stageCaption").textContent = btn.getAttribute("data-thumb-label");
+    });
   });
 
   if ($("categoryFilter")) $("categoryFilter").addEventListener("change", filterAndSortCards);

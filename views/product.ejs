@@ -1,0 +1,144 @@
+﻿<%- include("partials/header") %>
+
+<section class="section product-detail-section">
+  <nav class="breadcrumbs" aria-label="Breadcrumb">
+    <a href="/">Home</a>
+    <span aria-hidden="true">/</span>
+    <a href="/shop">Shop</a>
+    <span aria-hidden="true">/</span>
+    <a href="/shop?category=<%= encodeURIComponent(product.category) %>"><%= product.category %></a>
+    <span aria-hidden="true">/</span>
+    <span aria-current="page"><%= product.name %></span>
+  </nav>
+
+  <div class="product-detail-grid">
+    <div class="product-gallery">
+      <div
+        class="product-stage"
+        id="productStage"
+        style="--productbg:<%= product.visual.bg %>;--glyph:<%= product.visual.glyph %>"
+      >
+        <% if (product.onSale) { %>
+          <span class="product-badge">Sale</span>
+        <% } %>
+        <span class="product-stage-glyph" id="stageGlyph" aria-hidden="true"><%= product.gallery[0].mark %></span>
+        <span class="product-stage-caption" id="stageCaption"><%= product.gallery[0].label %> · Sample placeholder</span>
+      </div>
+
+      <div class="product-thumbs" role="group" aria-label="Product views">
+        <% product.gallery.forEach((shot, idx) => { %>
+          <button
+            class="product-thumb <%= idx === 0 ? 'active' : '' %>"
+            type="button"
+            data-thumb-glyph="<%= shot.mark %>"
+            data-thumb-label="<%= shot.label %> · Sample placeholder"
+            aria-label="Show <%= shot.label %>"
+            aria-pressed="<%= idx === 0 ? 'true' : 'false' %>"
+            style="--productbg:<%= shot.bg %>;--glyph:<%= shot.glyph %>"
+          >
+            <span class="thumb-mark" aria-hidden="true"><%= shot.mark %></span>
+            <span class="thumb-text"><%= shot.label %></span>
+          </button>
+        <% }) %>
+      </div>
+    </div>
+
+    <div class="product-summary">
+      <div class="product-meta-top">
+        <a class="eyebrow" href="/shop?category=<%= encodeURIComponent(product.category) %>"><%= product.category.toUpperCase() %></a>
+        <span class="sku-tag">SKU: <%= product.sku %></span>
+      </div>
+
+      <h1><%= product.name %></h1>
+
+      <div class="detail-price-row">
+        <span class="detail-price"><%= formatMoney(product.salePrice) %></span>
+        <% if (product.onSale) { %>
+          <span class="detail-old-price"><span class="sr-only">Regular price </span><%= formatMoney(product.price) %></span>
+          <span class="save-pill">Save <%= formatMoney(product.price - product.salePrice) %></span>
+        <% } %>
+      </div>
+
+      <p class="stock-pill <%= product.stock > 0 ? 'in-stock' : 'out-stock' %>">
+        <span class="stock-dot" aria-hidden="true"></span>
+        <%= product.stock > 0 ? `In stock (${product.stock} sample units available)` : 'Out of stock' %>
+      </p>
+
+      <p class="detail-description"><%= product.description %></p>
+
+      <div class="purchase-box" data-detail-purchase data-sku="<%= product.sku %>" data-max="<%= product.stock %>">
+        <div class="detail-qty-wrap">
+          <label class="filter-label" for="detailQtyInput">Quantity</label>
+          <div class="detail-qty-control">
+            <button type="button" id="detailQtyDec" aria-label="Decrease quantity" <%= product.stock < 1 ? 'disabled' : '' %>>−</button>
+            <input
+              id="detailQtyInput"
+              type="number"
+              min="1"
+              max="<%= Math.max(1, product.stock) %>"
+              value="1"
+              inputmode="numeric"
+              <%= product.stock < 1 ? 'disabled' : '' %>
+            >
+            <button type="button" id="detailQtyInc" aria-label="Increase quantity" <%= product.stock < 1 ? 'disabled' : '' %>>+</button>
+          </div>
+        </div>
+
+        <button
+          class="dark-button detail-add-button"
+          id="detailAddBtn"
+          type="button"
+          <%= product.stock < 1 ? 'disabled' : '' %>
+        >
+          <%= product.stock > 0 ? 'Add to Cart' : 'Out of stock' %> <span aria-hidden="true">+</span>
+        </button>
+      </div>
+
+      <p class="demo-note detail-demo-note">ⓘ Sample product data and placeholder artwork. Real photographs and confirmed details will replace these before launch.</p>
+
+      <% if (specs.length > 0) { %>
+        <div class="specs-block">
+          <h2>Product specifications</h2>
+          <dl class="specs-grid">
+            <% specs.forEach(spec => { %>
+              <div class="spec-row">
+                <dt><%= spec.label %></dt>
+                <dd><%= spec.value %></dd>
+              </div>
+            <% }) %>
+          </dl>
+        </div>
+      <% } %>
+
+      <div class="care-block">
+        <details open>
+          <summary>Candle care & safety</summary>
+          <p>Trim the wick to roughly 5 mm before each lighting, place on a heat-safe surface away from drafts, and never leave a burning candle unattended.</p>
+        </details>
+        <details>
+          <summary>Shipping & delivery (TBD)</summary>
+          <p>Delivery charges, cities served, and dispatch timelines will be displayed here once store settings are finalized.</p>
+        </details>
+      </div>
+    </div>
+  </div>
+</section>
+
+<% if (relatedProducts.length > 0) { %>
+  <section class="section shop-section related-section">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">YOU MAY ALSO LIKE</p>
+        <h2>More from <em>Aye Noor.</em></h2>
+      </div>
+      <a class="text-link" href="/shop">View all candles <span aria-hidden="true">↗</span></a>
+    </div>
+    <div class="product-grid">
+      <% relatedProducts.forEach(item => { %>
+        <%- include("partials/product-card", { product: item }) %>
+      <% }) %>
+    </div>
+  </section>
+<% } %>
+
+<%- include("partials/footer") %>

@@ -24,7 +24,9 @@ const PRODUCTS = [
     scent: "Wild Peony & Rose",
     color: "Blush Pink",
     size: "Medium",
-    description: "A sculptural floral candle with a soft, romantic look."
+    weight: "180 g",
+    dimensions: "8.5 × 8.5 × 4.5 cm",
+    description: "A sculptural floral candle with a soft, romantic look. Designed as an everyday centrepiece or a thoughtful gift."
   },
   {
     sku: "AN-FLW-002",
@@ -39,6 +41,8 @@ const PRODUCTS = [
     scent: "Chamomile & Honey",
     color: "Ivory / Yellow",
     size: "Large",
+    weight: "240 g",
+    dimensions: "10 × 10 × 5 cm",
     description: "A cheerful floral centrepiece inspired by a sunlit garden."
   },
   {
@@ -54,7 +58,9 @@ const PRODUCTS = [
     scent: "Vanilla Bean",
     color: "Cream White",
     size: "Small",
-    description: "A charming teddy-bear candle made for little gifting moments."
+    weight: "95 g",
+    dimensions: "6 × 5.5 × 7.5 cm",
+    description: "A charming teddy-bear candle made for little gifting moments and bedside shelves."
   },
   {
     sku: "AN-BEA-002",
@@ -69,6 +75,8 @@ const PRODUCTS = [
     scent: "Warm Caramel",
     color: "Mocha Brown",
     size: "Large",
+    weight: "320 g",
+    dimensions: "",
     description: "A statement bear candle with a cosy, playful presence."
   },
   {
@@ -84,6 +92,8 @@ const PRODUCTS = [
     scent: "Rich Amber & Velvet Oud",
     color: "Amber / Natural",
     size: "Standard 200g",
+    weight: "200 g",
+    dimensions: "7.5 × 7.5 × 9 cm",
     description: "A warm, woodsy fragrance in a simple jar-inspired style."
   },
   {
@@ -99,6 +109,8 @@ const PRODUCTS = [
     scent: "French Lavender & Sage",
     color: "Soft Purple",
     size: "Travel Tin",
+    weight: "",
+    dimensions: "",
     description: "A calming lavender-inspired candle for quiet evenings."
   },
   {
@@ -114,6 +126,8 @@ const PRODUCTS = [
     scent: "Vanilla & Rose",
     color: "Pastel Assorted",
     size: "Gift Box",
+    weight: "380 g",
+    dimensions: "18 × 12 × 8 cm",
     description: "A thoughtful candle duo prepared for gifting."
   },
   {
@@ -129,6 +143,8 @@ const PRODUCTS = [
     scent: "Custom Choice",
     color: "Custom",
     size: "Custom",
+    weight: "",
+    dimensions: "",
     description: "A sample custom candle listing; hidden while marked Draft."
   }
 ];
@@ -141,12 +157,36 @@ function formatMoney(value) {
   return `Rs. ${Number(value).toLocaleString("en-PK")}`;
 }
 
-function getActiveProducts() {
-  return PRODUCTS.filter(p => p.status === "Active").map(p => ({
+function enrichProduct(p) {
+  const v = getVisual(p.category);
+  return {
     ...p,
-    visual: getVisual(p.category),
-    onSale: p.salePrice < p.price
-  }));
+    visual: v,
+    onSale: p.salePrice < p.price,
+    gallery: [
+      { label: "Front view", mark: v.mark, bg: v.bg, glyph: v.glyph },
+      { label: "Detail & texture", mark: `${v.mark} ✳`, bg: v.bg, glyph: v.glyph },
+      { label: "Scale & styling", mark: "✳", bg: v.bg, glyph: v.glyph }
+    ]
+  };
+}
+
+function getActiveProducts() {
+  return PRODUCTS.filter(p => p.status === "Active").map(enrichProduct);
+}
+
+function getProductBySlug(slug) {
+  if (typeof slug !== "string" || !slug.trim()) return null;
+  const normalized = slug.trim().toLowerCase();
+  return getActiveProducts().find(p => p.slug === normalized) || null;
+}
+
+function getRelatedProducts(product, limit = 4) {
+  if (!product) return [];
+  const others = getActiveProducts().filter(p => p.sku !== product.sku);
+  const sameCategory = others.filter(p => p.category === product.category);
+  const differentCategory = others.filter(p => p.category !== product.category);
+  return [...sameCategory, ...differentCategory].slice(0, limit);
 }
 
 function getActiveCategories() {
@@ -161,6 +201,8 @@ function getActiveCategories() {
 
 module.exports = {
   getActiveProducts,
+  getProductBySlug,
+  getRelatedProducts,
   getActiveCategories,
   formatMoney
 };

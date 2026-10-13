@@ -4,6 +4,8 @@ const path = require("path");
 const express = require("express");
 const {
   getActiveProducts,
+  getProductBySlug,
+  getRelatedProducts,
   getActiveCategories,
   formatMoney
 } = require("./data/products");
@@ -81,6 +83,39 @@ app.get("/shop", (req, res) => {
     selectedCategory,
     selectedSort,
     searchQuery: searchTerm
+  });
+});
+
+// Individual product page (/product/:slug)
+app.get("/product/:slug", (req, res) => {
+  const product = getProductBySlug(req.params.slug);
+  if (!product) {
+    return res.status(404).render("status", {
+      pageTitle: "Product Not Found — Aye Noor",
+      pageDescription: "This candle could not be found.",
+      eyebrow: "404 · PRODUCT NOT FOUND",
+      heading: "We couldn't find that candle.",
+      message: "It may be unavailable, renamed, or still in draft. Explore our active candle collection below."
+    });
+  }
+
+  const specs = [
+    { label: "Scent", value: product.scent },
+    { label: "Color", value: product.color },
+    { label: "Size", value: product.size },
+    { label: "Weight", value: product.weight },
+    { label: "Dimensions", value: product.dimensions },
+    { label: "SKU", value: product.sku }
+  ].filter(item => typeof item.value === "string" && item.value.trim().length > 0);
+
+  const relatedProducts = getRelatedProducts(product, 4);
+
+  res.render("product", {
+    pageTitle: `${product.name} — Aye Noor`,
+    pageDescription: product.description,
+    product,
+    specs,
+    relatedProducts
   });
 });
 

@@ -6,15 +6,21 @@
   data-name="<%= product.name %>"
   data-search="<%= [product.name, product.category, product.description, product.scent, product.sku].join(' ').toLowerCase() %>"
 >
-  <div class="product-visual" style="--productbg:<%= product.visual.bg %>;--glyph:<%= product.visual.glyph %>">
-    <% if (product.onSale) { %>
-      <span class="product-badge">Sale</span>
-    <% } %>
-    <span class="product-glyph" aria-hidden="true"><%= product.visual.mark %></span>
-  </div>
+  <a
+    class="product-visual-link"
+    href="/product/<%= product.slug %>"
+    aria-label="View <%= product.name %> details"
+  >
+    <div class="product-visual" style="--productbg:<%= product.visual.bg %>;--glyph:<%= product.visual.glyph %>">
+      <% if (product.onSale) { %>
+        <span class="product-badge">Sale</span>
+      <% } %>
+      <span class="product-glyph" aria-hidden="true"><%= product.visual.mark %></span>
+    </div>
+  </a>
   <div class="product-info">
     <span class="product-category"><%= product.category %></span>
-    <h3><%= product.name %></h3>
+    <h3><a class="product-title-link" href="/product/<%= product.slug %>"><%= product.name %></a></h3>
     <p class="product-description"><%= product.description %></p>
     <div class="price-row">
       <span class="price"><%= formatMoney(product.salePrice) %></span>
