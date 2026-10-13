@@ -3,6 +3,7 @@
 const path = require("path");
 const express = require("express");
 const STORE_CONFIG = require("./data/config");
+const { FAQS, POLICIES } = require("./data/pages");
 const {
   getActiveProducts,
   getProductBySlug,
@@ -15,14 +16,15 @@ const {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// In-memory log of contact messages during development (moves to PostgreSQL in Step 8)
+const devContactMessages = [];
+
 app.disable("x-powered-by");
 
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 
-// Parse JSON request bodies (used by /api/cart/quote) with a safe 16kb size limit
 app.use(express.json({ limit: "16kb" }));
-
 app.use(express.static(path.join(__dirname, "public")));
 
 app.use((req, res, next) => {
@@ -114,7 +116,6 @@ app.get("/product/:slug", (req, res) => {
   });
 });
 
-// Dedicated Cart Page (/cart)
 app.get("/cart", (req, res) => {
   const suggestedProducts = getActiveProducts().filter(p => p.featured).slice(0, 4);
   res.render("cart", {
@@ -124,11 +125,85 @@ app.get("/cart", (req, res) => {
   });
 });
 
-// Server-side cart pricing API: receives [{ sku, qty }] and returns verified prices & totals
+// Static Brand & Help Pages (Step 6)
+app.get("/about", (req, res) => {
+  const categories = getActiveCategories();
+  res.render("about", {
+    pageTitle: "Our Story — Aye Noor",
+    pageDescription: "Learn about Aye Noor — handcrafted floral, bear, and scented candles designed for thoughtful gifting.",
+    categories
+  });
+});
+
+app.get("/contact", (req, res) => {
+  res.render("contact", {
+    pageTitle: "Contact Us — Aye Noor",
+    pageDescription: "Get in touch with Aye Noor regarding orders, gifting, or general inquiries."
+  });
+});
+
+app.get("/faq", (req, res) => {
+  res.render("faq", {
+    pageTitle: "Frequently Asked Questions — Aye Noor",
+    pageDescription: "Answers to common questions about ordering, delivery, and candle care at Aye Noor.",
+    faqs: FAQS
+  });
+});
+
+// Policy Pages (/shipping, /returns, /privacy, /terms)
+["shipping", "returns", "privacy", "terms"].forEach(key => {
+  app.get(`/${key}`, (req, res) => {
+    const policy = POLICIES[key];
+    res.render("policy", {
+      pageTitle: `${policy.title} — Aye Noor`,
+      pageDescription: policy.intro,
+      policy,
+      allPolicies: Object.values(POLICIES)
+    });
+  });
+});
+
+// Server-side cart pricing API
 app.post("/api/cart/quote", (req, res) => {
   const rawItems = req.body && Array.isArray(req.body.items) ? req.body.items : [];
   const quote = buildCartQuote(rawItems);
   res.json(quote);
+});
+
+// Server-validated Contact Inquiry API (development mode)
+app.post("/api/contact", (req, res) => {
+  const body = req.body || {};
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  const phoneOrEmail = typeof body.contact === "string" ? body.contact.trim() : "";
+  const topic = typeof body.topic === "string" ? body.topic.trim() : "General Inquiry";
+  const message = typeof body.message === "string" ? body.message.trim() : "";
+
+  if (name.length < 2 || name.length > 80) {
+    return res.status(400).json({ error: "Please enter your name (2–80 characters)." });
+  }
+  if (phoneOrEmail.length < 5 || phoneOrEmail.length > 100) {
+    return res.status(400).json({ error: "Please provide a valid phone number or email address." });
+  }
+  if (message.length < 10 || message.length > 1500) {
+    return res.status(400).json({ error: "Please enter a message between 10 and 1,500 characters." });
+  }
+
+  const record = {
+    id: `MSG-${1000 + devContactMessages.length + 1}`,
+    name,
+    contact: phoneOrEmail,
+    topic,
+    message,
+    createdAt: new Date().toISOString()
+  };
+  devContactMessages.push(record);
+  console.log(`[Contact Inquiry ${record.id}] From: ${record.name} (${record.contact}) | Topic: ${record.topic}`);
+
+  res.json({
+    ok: true,
+    reference: record.id,
+    message: `Thank you, ${name}. Your inquiry (${record.id}) has been recorded in development mode.`
+  });
 });
 
 app.get("/health", (req, res) => {

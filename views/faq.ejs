@@ -1,0 +1,39 @@
+﻿<%- include("partials/header") %>
+
+<section class="section page-hero-section">
+  <nav class="breadcrumbs" aria-label="Breadcrumb">
+    <a href="/">Home</a>
+    <span aria-hidden="true">/</span>
+    <span aria-current="page">FAQ</span>
+  </nav>
+
+  <div class="faq-header">
+    <p class="eyebrow">HELP CENTRE</p>
+    <h1>Frequently asked <em>questions.</em></h1>
+    <p class="lead-paragraph">
+      Everything we currently have confirmed about ordering, candle care, and our upcoming store launch. Items marked <strong>TBD</strong> will be updated once final store rules are locked in.
+    </p>
+  </div>
+
+  <div class="faq-list">
+    <% faqs.forEach((item, idx) => { %>
+      <details class="faq-item" <%= idx === 0 ? 'open' : '' %>>
+        <summary>
+          <span class="faq-category-tag"><%= item.category %></span>
+          <span class="faq-question-text"><%= item.question %></span>
+        </summary>
+        <p class="faq-answer"><%= item.answer %></p>
+      </details>
+    <% }) %>
+  </div>
+
+  <div class="faq-cta-box">
+    <div>
+      <h2>Still have a question?</h2>
+      <p>Send us a note and we'll get back to you as soon as possible.</p>
+    </div>
+    <a class="dark-button" href="/contact">Contact Us <span aria-hidden="true">↗</span></a>
+  </div>
+</section>
+
+<%- include("partials/footer") %>

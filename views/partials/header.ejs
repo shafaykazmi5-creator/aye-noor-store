@@ -22,8 +22,9 @@
     <nav class="main-nav" id="mainNav" aria-label="Main navigation">
       <a href="/shop" <%- currentPath === '/shop' ? 'aria-current="page"' : '' %>>Shop</a>
       <a href="/#categories">Collections</a>
-      <a href="/#story">Our story</a>
-      <a href="#contact">Contact</a>
+      <a href="/about" <%- currentPath === '/about' ? 'aria-current="page"' : '' %>>Our story</a>
+      <a href="/faq" <%- currentPath === '/faq' ? 'aria-current="page"' : '' %>>FAQ</a>
+      <a href="/contact" <%- currentPath === '/contact' ? 'aria-current="page"' : '' %>>Contact</a>
       <form class="menu-search" action="/shop" method="get" role="search">
         <span aria-hidden="true">⌕</span>
         <label class="sr-only" for="searchInputMobile">Search products</label>

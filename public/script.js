@@ -3,7 +3,6 @@
 
   const $ = id => document.getElementById(id);
   const CART_STORAGE_KEY = "ayeNoorCart_v1";
-  // Browser stores ONLY { sku -> qty }. Prices and stock are always verified via POST /api/cart/quote
   const cart = new Map();
 
   const money = value => `Rs. ${Number(value || 0).toLocaleString("en-PK")}`;
@@ -23,7 +22,6 @@
     }[ch]));
   }
 
-  /* ---------- Cart Storage (SKU & quantity only) ---------- */
   function loadCartFromStorage() {
     cart.clear();
     try {
@@ -49,7 +47,6 @@
     } catch {}
   }
 
-  /* ---------- Server-side Cart Quote & Sync ---------- */
   async function syncCartWithServer(toastMessage) {
     const reqId = ++quoteRequestId;
     const rawItems = [...cart.entries()].map(([sku, qty]) => ({ sku, qty }));
@@ -64,7 +61,6 @@
       const quote = await response.json();
       if (reqId !== quoteRequestId) return;
 
-      // Update local storage with server-validated SKUs and stock-capped quantities
       cart.clear();
       quote.items.forEach(item => cart.set(item.sku, item.qty));
       saveCartToStorage();
@@ -88,7 +84,7 @@
     const current = cart.get(sku) || 0;
     cart.set(sku, current + addAmount);
     saveCartToStorage();
-    syncCartWithServer(`Added to your cart.`);
+    syncCartWithServer("Added to your cart.");
   }
 
   function changeQuantity(sku, delta) {
@@ -112,7 +108,6 @@
     syncCartWithServer("Cart cleared.");
   }
 
-  /* ---------- Render Slide-out Cart Drawer ---------- */
   function renderDrawerQuote(quote) {
     const cartItemsEl = $("cartItems");
     if (!cartItemsEl) return;
@@ -158,7 +153,6 @@
     cartItemsEl.classList.toggle("hidden", quote.itemCount === 0);
   }
 
-  /* ---------- Render Dedicated /cart Page ---------- */
   function renderCartPageQuote(quote) {
     const emptyEl = $("cartPageEmpty");
     const contentEl = $("cartPageContent");
@@ -231,7 +225,6 @@
     }
   }
 
-  /* ---------- Client-side filtering & sorting of server-rendered cards ---------- */
   const productGrid = $("productGrid");
   const initialCards = productGrid ? [...productGrid.querySelectorAll(".product-card")] : [];
 
@@ -265,7 +258,6 @@
     if (emptyState) emptyState.classList.toggle("hidden", matching.length > 0);
   }
 
-  /* ---------- Cart drawer (accessible dialog) ---------- */
   function isCartOpen() { return $("cartDrawer").classList.contains("open"); }
 
   function openCart() {
@@ -394,6 +386,48 @@
     });
   });
 
+  /* ---------- Contact Form Wiring (Step 6) ---------- */
+  const contactForm = $("contactForm");
+  if (contactForm) {
+    contactForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      const feedback = $("contactFeedback");
+      const submitBtn = $("contactSubmitBtn");
+      const payload = {
+        name: $("contactName").value.trim(),
+        contact: $("contactInfo").value.trim(),
+        topic: $("contactTopic").value,
+        message: $("contactMessage").value.trim()
+      };
+
+      submitBtn.disabled = true;
+      feedback.className = "form-feedback";
+      feedback.textContent = "Sending your message…";
+
+      try {
+        const res = await fetch("/api/contact", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          feedback.className = "form-feedback error";
+          feedback.textContent = data.error || "Please check your form details and try again.";
+        } else {
+          feedback.className = "form-feedback success";
+          feedback.textContent = data.message;
+          contactForm.reset();
+        }
+      } catch {
+        feedback.className = "form-feedback error";
+        feedback.textContent = "Could not reach the server. Please try again.";
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  }
+
   if ($("categoryFilter")) $("categoryFilter").addEventListener("change", filterAndSortCards);
   if ($("sortSelect")) $("sortSelect").addEventListener("change", filterAndSortCards);
   if ($("clearCartBtn")) $("clearCartBtn").addEventListener("click", clearCart);
@@ -411,11 +445,10 @@
     else if (isMenuOpen()) { setMenu(false); $("menuButton").focus(); }
   });
 
-  const checkoutNotice = () => showToast("Checkout form comes in Step 7 (right after Static pages in Step 6).");
+  const checkoutNotice = () => showToast("Checkout form is up next in Step 7!");
   if ($("checkoutDemo")) $("checkoutDemo").addEventListener("click", checkoutNotice);
   if ($("cartPageCheckoutBtn")) $("cartPageCheckoutBtn").addEventListener("click", checkoutNotice);
 
-  // Sync Across Browser Tabs
   window.addEventListener("storage", event => {
     if (event.key === CART_STORAGE_KEY) {
       loadCartFromStorage();

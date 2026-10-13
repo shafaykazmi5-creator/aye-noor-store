@@ -1,12 +1,43 @@
 ﻿  </main>
 
   <footer class="footer" id="contact">
-    <a class="wordmark footer-wordmark" href="/" aria-label="Aye Noor home">AYE <span>NOOR</span><small>OBJECTS OF LIGHT</small></a>
-    <div class="footer-text">
-      <p>Warm light. Thoughtful gifting. A work in progress.</p>
-      <p>Contact details will be added once they are confirmed.</p>
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a class="wordmark footer-wordmark" href="/" aria-label="Aye Noor home">AYE <span>NOOR</span><small>OBJECTS OF LIGHT</small></a>
+        <p class="footer-tagline">Candles shaped for warm rooms, quiet evenings, and thoughtful gifting.</p>
+        <p class="footer-tbd">Official WhatsApp, phone, and social links will be added once confirmed.</p>
+      </div>
+
+      <nav class="footer-col" aria-label="Shop navigation">
+        <h3>Shop</h3>
+        <a href="/shop">All Candles</a>
+        <a href="/shop?category=Flower%20Candles">Flower Candles</a>
+        <a href="/shop?category=Bear%20Candles">Bear Candles</a>
+        <a href="/shop?category=Scented%20Candles">Scented Candles</a>
+        <a href="/shop?category=Gift%20Sets">Gift Sets</a>
+      </nav>
+
+      <nav class="footer-col" aria-label="Brand navigation">
+        <h3>Aye Noor</h3>
+        <a href="/about">Our Story</a>
+        <a href="/contact">Contact Us</a>
+        <a href="/faq">FAQ</a>
+        <a href="/cart">Shopping Cart</a>
+      </nav>
+
+      <nav class="footer-col" aria-label="Policies navigation">
+        <h3>Policies (TBD)</h3>
+        <a href="/shipping">Shipping Policy</a>
+        <a href="/returns">Return Policy</a>
+        <a href="/privacy">Privacy Policy</a>
+        <a href="/terms">Terms of Service</a>
+      </nav>
     </div>
-    <span class="footer-copy">© <span id="year"><%= new Date().getFullYear() %></span> Aye Noor · Development prototype</span>
+
+    <div class="footer-bottom">
+      <span class="footer-copy">© <span id="year"><%= new Date().getFullYear() %></span> Aye Noor · Development prototype</span>
+      <span class="footer-copy">Prices in Pakistani Rupees (Rs.) · Sample catalogue active</span>
+    </div>
   </footer>
 
   <div class="overlay hidden" id="cartOverlay"></div>

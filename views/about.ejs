@@ -1,0 +1,73 @@
+﻿<%- include("partials/header") %>
+
+<section class="section page-hero-section">
+  <nav class="breadcrumbs" aria-label="Breadcrumb">
+    <a href="/">Home</a>
+    <span aria-hidden="true">/</span>
+    <span aria-current="page">Our Story</span>
+  </nav>
+
+  <div class="about-hero-grid">
+    <div>
+      <p class="eyebrow">ABOUT AYE NOOR</p>
+      <h1>Small objects of <em>warmth & light.</em></h1>
+      <p class="lead-paragraph">
+        Aye Noor was created around a simple feeling: a candle does more than scent a room—it marks a pause in the day, softens an evening table, and turns a small gesture into a memorable gift.
+      </p>
+      <div class="tbd-callout">
+        <strong>ⓘ Prototype Note (No Invented Claims):</strong> This page holds the visual layout for the Aye Noor brand story. Confirmed details regarding wax formulations, studio background, and photography will be added by the owner before launch.
+      </div>
+    </div>
+    <div class="about-emblem-card" aria-hidden="true">
+      <div class="story-mark">AN</div>
+      <p class="emblem-caption">LIGHT · SCENT · SENTIMENT</p>
+    </div>
+  </div>
+</section>
+
+<section class="section shop-section">
+  <div class="section-heading">
+    <div>
+      <p class="eyebrow">WHAT WE MAKE</p>
+      <h2>Designed for <em>gifting & calm.</em></h2>
+    </div>
+  </div>
+
+  <div class="pillars-grid">
+    <article class="pillar-card">
+      <span class="pillar-icon" aria-hidden="true">✿</span>
+      <h3>Sculptural Forms</h3>
+      <p>From peony blossoms to playful teddy bears, each shape is chosen so the candle looks just as lovely unlit on a shelf as it does glowing in the evening.</p>
+    </article>
+    <article class="pillar-card">
+      <span class="pillar-icon" aria-hidden="true">◉</span>
+      <h3>Comforting Scents</h3>
+      <p>Our collection pairs gentle florals, warm vanilla, and woody oud notes suited for bedrooms, living spaces, and cosy gatherings.</p>
+    </article>
+    <article class="pillar-card">
+      <span class="pillar-icon" aria-hidden="true">✧</span>
+      <h3>Gift-Ready Presentation</h3>
+      <p>Whether you are picking up a single mini candle or a curated duo set, Aye Noor pieces are made to feel thoughtful from the moment they are opened.</p>
+    </article>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-heading">
+    <div>
+      <p class="eyebrow">EXPLORE THE STORE</p>
+      <h2>Browse by <em>collection.</em></h2>
+    </div>
+    <a class="text-link" href="/shop">View all products <span aria-hidden="true">↗</span></a>
+  </div>
+  <div class="category-grid">
+    <% categories.forEach(cat => { %>
+      <a class="category-card" href="/shop?category=<%= encodeURIComponent(cat.name) %>" style="--catbg:<%= cat.visual.bg %>">
+        <span class="category-art" aria-hidden="true"><%= cat.visual.mark %></span>
+        <span class="category-name"><%= cat.name %></span>
+      </a>
+    <% }) %>
+  </div>
+</section>
+
+<%- include("partials/footer") %>

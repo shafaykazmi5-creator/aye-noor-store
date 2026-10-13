@@ -1,0 +1,77 @@
+﻿<%- include("partials/header") %>
+
+<section class="section page-hero-section">
+  <nav class="breadcrumbs" aria-label="Breadcrumb">
+    <a href="/">Home</a>
+    <span aria-hidden="true">/</span>
+    <span aria-current="page">Contact Us</span>
+  </nav>
+
+  <div class="contact-layout">
+    <div class="contact-info-panel">
+      <p class="eyebrow">GET IN TOUCH</p>
+      <h1>We'd love to <em>hear from you.</em></h1>
+      <p class="lead-paragraph">
+        Have a question about a candle, a gift set, or an upcoming order? Send us a note using the form, or reach out through our official channels once they are published.
+      </p>
+
+      <div class="contact-cards">
+        <div class="contact-channel-card">
+          <span class="eyebrow">WHATSAPP BUSINESS</span>
+          <h3>Dedicated Order & Support Number (TBD)</h3>
+          <p>Our separate Aye Noor business WhatsApp number for order alerts and customer support will be connected in a later step.</p>
+        </div>
+        <div class="contact-channel-card">
+          <span class="eyebrow">EMAIL & SOCIAL CHANNELS</span>
+          <h3>Official Handles (TBD)</h3>
+          <p>Confirmed email, Instagram, Facebook, and TikTok links will be listed here once verified by the business owner.</p>
+        </div>
+        <div class="contact-channel-card">
+          <span class="eyebrow">QUICK ANSWERS</span>
+          <h3>Looking for shipping or care info?</h3>
+          <p>Visit our <a class="inline-underline" href="/faq">Frequently Asked Questions</a> or <a class="inline-underline" href="/shipping">Shipping Policy</a> page.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="contact-form-card">
+      <h2>Send a message</h2>
+      <p class="demo-note">ⓘ Development mode: messages are validated by the Express server and logged locally.</p>
+
+      <form id="contactForm" novalidate>
+        <div class="form-field">
+          <label for="contactName">Your name *</label>
+          <input id="contactName" name="name" type="text" required minlength="2" maxlength="80" placeholder="e.g. Ayesha Khan">
+        </div>
+
+        <div class="form-field">
+          <label for="contactInfo">Phone / WhatsApp or Email *</label>
+          <input id="contactInfo" name="contact" type="text" required minlength="5" maxlength="100" placeholder="e.g. 0300-1234567 or you@example.com">
+        </div>
+
+        <div class="form-field">
+          <label for="contactTopic">Topic</label>
+          <select id="contactTopic" name="topic">
+            <option value="General Inquiry">General Inquiry</option>
+            <option value="Order Question">Order Question</option>
+            <option value="Gifting / Bulk Order">Gifting / Bulk Order</option>
+            <option value="Custom Candle Request">Custom Candle Request</option>
+          </select>
+        </div>
+
+        <div class="form-field">
+          <label for="contactMessage">Message *</label>
+          <textarea id="contactMessage" name="message" rows="5" required minlength="10" maxlength="1500" placeholder="Tell us how we can help…"></textarea>
+        </div>
+
+        <p class="form-feedback hidden" id="contactFeedback" role="status" aria-live="polite"></p>
+
+        <button class="dark-button full-button" id="contactSubmitBtn" type="submit">
+          Send Message <span aria-hidden="true">↗</span>
+        </button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<%- include("partials/footer") %>
