@@ -1,17 +1,14 @@
-(() => {
+﻿(() => {
   "use strict";
-  const products = (window.AYE_NOOR_PRODUCTS || []).filter(p => p.status === "Active");
-  const categories = [...new Set(products.map(p => p.category))];
+
   const $ = id => document.getElementById(id);
+  const catalogEl = $("catalogData");
+  const catalog = catalogEl ? JSON.parse(catalogEl.textContent || "[]") : [];
+  const productMap = new Map(catalog.map(p => [p.sku, p]));
+
+  const CART_STORAGE_KEY = "ayeNoorCart_v1";
   const cart = new Map();
-  const styles = {
-    "Flower Candles": {bg:"#e8c9c0",glyph:"#b77970",mark:"✿"},
-    "Bear Candles": {bg:"#dfc8b1",glyph:"#a47c5e",mark:"♡"},
-    "Scented Candles": {bg:"#d7d8c7",glyph:"#79806a",mark:"◉"},
-    "Gift Sets": {bg:"#e5c6ba",glyph:"#b67e72",mark:"✧"},
-    "Custom Candles": {bg:"#ddd0bd",glyph:"#9c8366",mark:"A"}
-  };
-  const visual = category => styles[category] || {bg:"#e8d9ca",glyph:"#a98d73",mark:"✳"};
+
   const money = value => `Rs. ${Number(value).toLocaleString("en-PK")}`;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const scrollBehavior = () => (reducedMotion.matches ? "auto" : "smooth");
@@ -19,111 +16,133 @@
   let lastFocused = null;
 
   function escapeHTML(value) {
-    return String(value).replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+    return String(value).replace(/[&<>"']/g, ch => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[ch]));
   }
 
-  /* ---------- Categories & products ---------- */
-  function renderCategories() {
-    categories.forEach(category => {
-      const v = visual(category);
-      const button = document.createElement("button");
-      button.className = "category-card";
-      button.type = "button";
-      button.style.setProperty("--catbg", v.bg);
-      button.innerHTML = `<span class="category-art" aria-hidden="true">${v.mark}</span><span class="category-name">${escapeHTML(category)}</span>`;
-      button.addEventListener("click", () => {
-        $("categoryFilter").value = category;
-        renderProducts();
-        $("shop").scrollIntoView({behavior: scrollBehavior()});
+  function loadCart() {
+    try {
+      const raw = localStorage.getItem(CART_STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (!Array.isArray(saved)) return;
+      saved.forEach(entry => {
+        if (!entry || typeof entry.sku !== "string") return;
+        const p = productMap.get(entry.sku);
+        const qty = Number(entry.qty);
+        if (p && Number.isInteger(qty) && qty > 0) {
+          cart.set(entry.sku, Math.min(qty, p.stock));
+        }
       });
-      $("categoryGrid").appendChild(button);
-      const option = document.createElement("option");
-      option.value = category;
-      option.textContent = category;
-      $("categoryFilter").appendChild(option);
-    });
+    } catch {}
   }
 
-  function renderProducts() {
-    const term = $("searchInput").value.trim().toLowerCase();
-    const category = $("categoryFilter").value;
-    let list = products.filter(p => {
-      const text = [p.name,p.category,p.description,p.scent,p.sku].join(" ").toLowerCase();
-      return (category === "all" || p.category === category) && text.includes(term);
-    });
-    if ($("sortSelect").value === "low-high") list.sort((a,b) => a.salePrice-b.salePrice);
-    if ($("sortSelect").value === "high-low") list.sort((a,b) => b.salePrice-a.salePrice);
-    if ($("sortSelect").value === "name") list.sort((a,b) => a.name.localeCompare(b.name));
-    $("productGrid").innerHTML = "";
-    list.forEach(p => {
-      const v = visual(p.category);
-      const onSale = p.salePrice < p.price;
-      const card = document.createElement("article");
-      card.className = "product-card";
-      card.innerHTML = `<div class="product-visual" style="--productbg:${v.bg};--glyph:${v.glyph}">
-        ${onSale ? '<span class="product-badge">Sale</span>' : ''}
-        <span class="product-glyph" aria-hidden="true">${v.mark}</span></div>
-        <div class="product-info"><span class="product-category">${escapeHTML(p.category)}</span>
-        <h3>${escapeHTML(p.name)}</h3><p class="product-description">${escapeHTML(p.description)}</p>
-        <div class="price-row"><span class="price">${money(p.salePrice)}</span>${onSale ? `<span class="old-price"><span class="sr-only">Regular price </span>${money(p.price)}</span>` : ''}</div>
-        <button class="add-button" type="button" aria-label="${p.stock > 0 ? "Add " + escapeHTML(p.name) + " to cart" : escapeHTML(p.name) + " is out of stock"}">${p.stock > 0 ? "Add to Cart" : "Out of stock"}</button></div>`;
-      const addButton = card.querySelector("button");
-      addButton.disabled = p.stock < 1;
-      addButton.addEventListener("click", () => addToCart(p.sku));
-      $("productGrid").appendChild(card);
-    });
-    $("emptyState").classList.toggle("hidden", list.length > 0);
+  function saveCart() {
+    try {
+      const payload = [...cart.entries()].map(([sku, qty]) => ({ sku, qty }));
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(payload));
+    } catch {}
   }
 
-  /* ---------- Cart ---------- */
+  const productGrid = $("productGrid");
+  const initialCards = productGrid ? [...productGrid.querySelectorAll(".product-card")] : [];
+
+  function filterAndSortCards() {
+    if (!productGrid) return;
+    const searchInput = $("searchInput");
+    const term = searchInput ? searchInput.value.trim().toLowerCase() : "";
+    const category = $("categoryFilter") ? $("categoryFilter").value : "all";
+    const sort = $("sortSelect") ? $("sortSelect").value : "featured";
+
+    const matching = initialCards.filter(card => {
+      const cardCat = card.dataset.category || "";
+      const cardSearch = card.dataset.search || "";
+      const catMatch = category === "all" || cardCat === category;
+      const termMatch = !term || cardSearch.includes(term);
+      return catMatch && termMatch;
+    });
+
+    if (sort === "low-high") {
+      matching.sort((a, b) => Number(a.dataset.price) - Number(b.dataset.price));
+    } else if (sort === "high-low") {
+      matching.sort((a, b) => Number(b.dataset.price) - Number(a.dataset.price));
+    } else if (sort === "name") {
+      matching.sort((a, b) => (a.dataset.name || "").localeCompare(b.dataset.name || ""));
+    }
+
+    productGrid.innerHTML = "";
+    matching.forEach(card => productGrid.appendChild(card));
+
+    const emptyState = $("emptyState");
+    if (emptyState) emptyState.classList.toggle("hidden", matching.length > 0);
+  }
+
   function addToCart(sku) {
-    const p = products.find(item => item.sku === sku);
+    const p = productMap.get(sku);
     if (!p || p.stock < 1) return;
     const quantity = cart.get(sku) || 0;
     if (quantity >= p.stock) return showToast("You've reached the sample stock limit.");
     cart.set(sku, quantity + 1);
+    saveCart();
     renderCart();
     showToast(`${p.name} added to your cart.`);
   }
 
   function changeQuantity(sku, delta) {
-    const p = products.find(item => item.sku === sku);
+    const p = productMap.get(sku);
     if (!p) return;
     const quantity = (cart.get(sku) || 0) + delta;
     if (quantity <= 0) cart.delete(sku);
     else if (quantity <= p.stock) cart.set(sku, quantity);
     else showToast("You've reached the sample stock limit.");
+    saveCart();
     renderCart();
   }
 
   function renderCart() {
-    let count = 0, subtotal = 0;
-    $("cartItems").innerHTML = "";
+    let count = 0;
+    let subtotal = 0;
+    const cartItemsEl = $("cartItems");
+    if (!cartItemsEl) return;
+    cartItemsEl.innerHTML = "";
+
     cart.forEach((quantity, sku) => {
-      const p = products.find(item => item.sku === sku);
+      const p = productMap.get(sku);
       if (!p) return;
-      const v = visual(p.category);
+      const v = p.visual || { bg: "#e8d9ca", glyph: "#a98d73", mark: "✳" };
       const name = escapeHTML(p.name);
-      count += quantity; subtotal += p.salePrice * quantity;
+      count += quantity;
+      subtotal += p.salePrice * quantity;
+
       const row = document.createElement("div");
       row.className = "cart-line";
       row.innerHTML = `<div class="cart-line-art" style="--productbg:${v.bg};--glyph:${v.glyph}" aria-hidden="true">${v.mark}</div>
-       <div><h4>${name}</h4><small>${money(p.salePrice)} each</small>
-       <div class="qty-control"><button type="button" aria-label="Decrease quantity of ${name}">−</button><span aria-label="Quantity">${quantity}</span><button type="button" aria-label="Increase quantity of ${name}">+</button></div>
-       <button type="button" class="remove-line" aria-label="Remove ${name} from cart">Remove</button></div><div class="cart-line-total">${money(p.salePrice * quantity)}</div>`;
+        <div><h4>${name}</h4><small>${money(p.salePrice)} each</small>
+        <div class="qty-control"><button type="button" aria-label="Decrease quantity of ${name}">−</button><span aria-label="Quantity">${quantity}</span><button type="button" aria-label="Increase quantity of ${name}">+</button></div>
+        <button type="button" class="remove-line" aria-label="Remove ${name} from cart">Remove</button></div><div class="cart-line-total">${money(p.salePrice * quantity)}</div>`;
+
       const controls = row.querySelectorAll(".qty-control button");
-      controls[0].addEventListener("click", () => changeQuantity(sku,-1));
-      controls[1].addEventListener("click", () => changeQuantity(sku,1));
-      row.querySelector(".remove-line").addEventListener("click", () => {cart.delete(sku);renderCart();});
-      $("cartItems").appendChild(row);
+      controls[0].addEventListener("click", () => changeQuantity(sku, -1));
+      controls[1].addEventListener("click", () => changeQuantity(sku, 1));
+      row.querySelector(".remove-line").addEventListener("click", () => {
+        cart.delete(sku);
+        saveCart();
+        renderCart();
+      });
+      cartItemsEl.appendChild(row);
     });
+
     $("cartCount").textContent = count;
     $("cartSubtotal").textContent = money(subtotal);
     $("cartEmpty").classList.toggle("hidden", count > 0);
-    $("cartItems").classList.toggle("hidden", count === 0);
+    cartItemsEl.classList.toggle("hidden", count === 0);
   }
 
-  /* ---------- Cart drawer (accessible dialog) ---------- */
   function isCartOpen() { return $("cartDrawer").classList.contains("open"); }
 
   function openCart() {
@@ -148,7 +167,6 @@
     if (lastFocused && typeof lastFocused.focus === "function") lastFocused.focus();
   }
 
-  // Keep Tab inside the open cart so keyboard users don't wander behind it
   function trapFocus(event) {
     if (event.key !== "Tab" || !isCartOpen()) return;
     const focusable = [...$("cartDrawer").querySelectorAll("button:not([disabled]), [href], input, select, [tabindex]:not([tabindex='-1'])")]
@@ -159,7 +177,6 @@
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   }
 
-  /* ---------- Mobile menu ---------- */
   function setMenu(open) {
     $("mainNav").classList.toggle("open", open);
     $("menuButton").setAttribute("aria-expanded", String(open));
@@ -167,7 +184,6 @@
   }
   function isMenuOpen() { return $("mainNav").classList.contains("open"); }
 
-  /* ---------- Toast ---------- */
   function showToast(message) {
     $("toast").textContent = message;
     $("toast").classList.add("show");
@@ -175,22 +191,46 @@
     toastTimer = setTimeout(() => $("toast").classList.remove("show"), 2400);
   }
 
-  /* ---------- Search (desktop box and mobile-menu box stay in sync) ---------- */
-  const searchInputs = [$("searchInput"), $("searchInputMobile")];
+  const searchInputs = [$("searchInput"), $("searchInputMobile")].filter(Boolean);
   searchInputs.forEach(input => {
     input.addEventListener("input", () => {
       searchInputs.forEach(other => { if (other !== input) other.value = input.value; });
-      renderProducts();
+      if (productGrid) filterAndSortCards();
     });
-    input.addEventListener("keydown", event => {
-      if (event.key === "Enter") {
-        setMenu(false);
-        $("shop").scrollIntoView({behavior: scrollBehavior()});
+    const form = input.closest("form");
+    if (form) {
+      form.addEventListener("submit", event => {
+        if (productGrid && $("shop")) {
+          event.preventDefault();
+          setMenu(false);
+          filterAndSortCards();
+          $("shop").scrollIntoView({ behavior: scrollBehavior() });
+        }
+      });
+    }
+  });
+
+  document.querySelectorAll("[data-category-select]").forEach(card => {
+    card.addEventListener("click", event => {
+      const filterEl = $("categoryFilter");
+      const shopSection = $("shop");
+      if (filterEl && shopSection) {
+        event.preventDefault();
+        filterEl.value = card.getAttribute("data-category-select");
+        filterAndSortCards();
+        shopSection.scrollIntoView({ behavior: scrollBehavior() });
       }
     });
   });
 
-  /* ---------- Wiring ---------- */
+  document.addEventListener("click", event => {
+    const addBtn = event.target.closest("[data-add-sku]");
+    if (addBtn) addToCart(addBtn.getAttribute("data-add-sku"));
+  });
+
+  if ($("categoryFilter")) $("categoryFilter").addEventListener("change", filterAndSortCards);
+  if ($("sortSelect")) $("sortSelect").addEventListener("change", filterAndSortCards);
+
   $("menuButton").addEventListener("click", () => setMenu(!isMenuOpen()));
   $("mainNav").querySelectorAll("a").forEach(link => link.addEventListener("click", () => setMenu(false)));
   window.matchMedia("(min-width: 861px)").addEventListener("change", event => { if (event.matches) setMenu(false); });
@@ -203,9 +243,8 @@
     if (isCartOpen()) closeCart();
     else if (isMenuOpen()) { setMenu(false); $("menuButton").focus(); }
   });
-  $("categoryFilter").addEventListener("change", renderProducts);
-  $("sortSelect").addEventListener("change", renderProducts);
   $("checkoutDemo").addEventListener("click", () => showToast("Checkout will be added after the secure backend is built."));
-  $("year").textContent = new Date().getFullYear();
-  renderCategories(); renderProducts(); renderCart();
+
+  loadCart();
+  renderCart();
 })();

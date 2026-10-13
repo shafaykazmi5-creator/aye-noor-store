@@ -1,0 +1,39 @@
+﻿  </main>
+
+  <footer class="footer" id="contact">
+    <a class="wordmark footer-wordmark" href="/" aria-label="Aye Noor home">AYE <span>NOOR</span><small>OBJECTS OF LIGHT</small></a>
+    <div class="footer-text">
+      <p>Warm light. Thoughtful gifting. A work in progress.</p>
+      <p>Contact details will be added once they are confirmed.</p>
+    </div>
+    <span class="footer-copy">© <span id="year"><%= new Date().getFullYear() %></span> Aye Noor · Development prototype</span>
+  </footer>
+
+  <div class="overlay hidden" id="cartOverlay"></div>
+  <aside class="cart-drawer" id="cartDrawer" role="dialog" aria-modal="true" aria-labelledby="cartTitle" aria-hidden="true" inert>
+    <div class="drawer-header">
+      <div>
+        <p class="eyebrow">YOUR SELECTION</p>
+        <h2 id="cartTitle">Your cart</h2>
+      </div>
+      <button class="close-button" id="closeCart" type="button" aria-label="Close cart">×</button>
+    </div>
+    <p class="drawer-demo">Demo cart only — checkout is not connected yet.</p>
+    <div class="cart-items" id="cartItems"></div>
+    <div class="cart-empty" id="cartEmpty">
+      <span aria-hidden="true">✳</span>
+      <h3>Your cart is empty</h3>
+      <p>Find a little something to make someone's day.</p>
+    </div>
+    <div class="cart-footer">
+      <div class="subtotal-row">
+        <span>Subtotal</span>
+        <strong id="cartSubtotal">Rs. 0</strong>
+      </div>
+      <p>Shipping will be calculated when checkout is built.</p>
+      <button class="dark-button full-button" id="checkoutDemo" type="button">Checkout <span aria-hidden="true">↗</span></button>
+    </div>
+  </aside>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

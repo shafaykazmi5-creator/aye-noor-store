@@ -1,0 +1,42 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="<%= pageDescription %>">
+  <title><%= pageTitle %></title>
+  <link rel="stylesheet" href="/styles.css">
+  <script id="catalogData" type="application/json"><%- JSON.stringify(cartCatalog).replace(/</g, "\\u003c") %></script>
+  <script src="/script.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+  <div class="announcement">A LITTLE LIGHT, A LOT OF FEELING <span aria-hidden="true">✳</span> AYE NOOR SAMPLE STORE</div>
+
+  <header class="site-header">
+    <button class="menu-button" id="menuButton" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="mainNav">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <a class="wordmark" href="/" aria-label="Aye Noor home">AYE <span>NOOR</span><small>OBJECTS OF LIGHT</small></a>
+    <nav class="main-nav" id="mainNav" aria-label="Main navigation">
+      <a href="/shop" <%- currentPath === '/shop' ? 'aria-current="page"' : '' %>>Shop</a>
+      <a href="/#categories">Collections</a>
+      <a href="/#story">Our story</a>
+      <a href="#contact">Contact</a>
+      <form class="menu-search" action="/shop" method="get" role="search">
+        <span aria-hidden="true">⌕</span>
+        <label class="sr-only" for="searchInputMobile">Search products</label>
+        <input id="searchInputMobile" name="q" type="search" placeholder="Search candles" value="<%= searchQuery %>">
+      </form>
+    </nav>
+    <div class="header-actions">
+      <form class="header-search" action="/shop" method="get" role="search">
+        <span aria-hidden="true">⌕</span>
+        <label class="sr-only" for="searchInput">Search products</label>
+        <input id="searchInput" name="q" type="search" placeholder="Search candles" value="<%= searchQuery %>">
+      </form>
+      <button class="cart-button" id="openCart" type="button">Cart <span id="cartCount">0</span></button>
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1">

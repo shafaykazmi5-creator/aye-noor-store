@@ -1,0 +1,41 @@
+﻿<%- include("partials/header") %>
+
+<section class="section shop-section shop-page" id="shop">
+  <div class="section-heading shop-heading">
+    <div>
+      <p class="eyebrow">AYE NOOR CATALOGUE</p>
+      <h1>Shop <em>all candles.</em></h1>
+    </div>
+    <form class="shop-tools" id="shopFilterForm" action="/shop" method="get">
+      <% if (searchQuery) { %>
+        <input type="hidden" name="q" value="<%= searchQuery %>" id="hiddenSearchQuery">
+      <% } %>
+      <label class="filter-label" for="categoryFilter">Collection</label>
+      <select id="categoryFilter" name="category">
+        <option value="all" <%= selectedCategory === 'all' ? 'selected' : '' %>>All collections</option>
+        <% categories.forEach(cat => { %>
+          <option value="<%= cat.name %>" <%= selectedCategory === cat.name ? 'selected' : '' %>><%= cat.name %></option>
+        <% }) %>
+      </select>
+      <label class="filter-label" for="sortSelect">Sort</label>
+      <select id="sortSelect" name="sort">
+        <option value="featured" <%= selectedSort === 'featured' ? 'selected' : '' %>>Featured</option>
+        <option value="low-high" <%= selectedSort === 'low-high' ? 'selected' : '' %>>Price: low to high</option>
+        <option value="high-low" <%= selectedSort === 'high-low' ? 'selected' : '' %>>Price: high to low</option>
+        <option value="name" <%= selectedSort === 'name' ? 'selected' : '' %>>Name A–Z</option>
+      </select>
+      <noscript><button class="dark-button" type="submit">Apply</button></noscript>
+    </form>
+  </div>
+  <p class="demo-note">ⓘ These are temporary sample products and prices, not the final catalogue.</p>
+  <div class="product-grid" id="productGrid" aria-live="polite">
+    <% products.forEach(product => { %>
+      <%- include("partials/product-card", { product }) %>
+    <% }) %>
+  </div>
+  <p class="empty-state <%= products.length > 0 ? 'hidden' : '' %>" id="emptyState">
+    No products match your search. Try another term or <a class="inline-underline" href="/shop">reset filters</a>.
+  </p>
+</section>
+
+<%- include("partials/footer") %>
