@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Aye Noor candle shop development prototype.">
+  <title>Aye Noor — Candles for thoughtful moments</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="products.js" defer></script>
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+  <div class="announcement">A LITTLE LIGHT, A LOT OF FEELING <span aria-hidden="true">✳</span> AYE NOOR SAMPLE STORE</div>
+
+  <header class="site-header">
+    <button class="menu-button" id="menuButton" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="mainNav">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <a class="wordmark" href="#" aria-label="Aye Noor home">AYE <span>NOOR</span><small>OBJECTS OF LIGHT</small></a>
+    <nav class="main-nav" id="mainNav" aria-label="Main navigation">
+      <a href="#shop">Shop</a><a href="#categories">Collections</a><a href="#story">Our story</a><a href="#contact">Contact</a>
+      <label class="menu-search"><span aria-hidden="true">⌕</span><span class="sr-only">Search products</span><input id="searchInputMobile" type="search" placeholder="Search candles"></label>
+    </nav>
+    <div class="header-actions">
+      <label class="header-search"><span aria-hidden="true">⌕</span><span class="sr-only">Search products</span><input id="searchInput" type="search" placeholder="Search candles"></label>
+      <button class="cart-button" id="openCart" type="button">Cart <span id="cartCount">0</span></button>
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">MADE FOR THE MOMENTS THAT MATTER</p>
+        <h1>Let your little<br><em>moments glow.</em></h1>
+        <p class="hero-description">Candles that turn everyday rituals into thoughtful, beautiful moments. Explore our sample collection while we build the Aye Noor store.</p>
+        <a class="dark-button" href="#shop">Explore the collection <span aria-hidden="true">↗</span></a>
+        <div class="hero-note"><span class="tiny-star" aria-hidden="true">✳</span> A warm little world of candles and gifting</div>
+      </div>
+      <div class="hero-art" role="img" aria-label="Decorative candle still-life illustration">
+        <div class="sun-disc"></div><div class="arch arch-back"></div><div class="arch arch-front"></div>
+        <div class="pedestal"></div><div class="candle candle-tall"><i></i><b></b></div>
+        <div class="candle candle-small"><i></i><b></b></div>
+        <div class="flower flower-one">✿</div><div class="flower flower-two">✿</div>
+        <div class="art-caption">LIGHT · SCENT · SENTIMENT</div>
+      </div>
+    </section>
+
+    <section class="intro-strip" aria-label="Brand highlights">
+      <span>THOUGHTFULLY GIFTABLE</span><span class="strip-flower" aria-hidden="true">✳</span><span>DESIGNED TO DELIGHT</span><span class="strip-flower" aria-hidden="true">✳</span><span>MADE FOR YOUR MOMENTS</span>
+    </section>
+
+    <section class="section" id="categories">
+      <div class="section-heading">
+        <div><p class="eyebrow">FIND YOUR FAVOURITE</p><h2>Shop by <em>mood.</em></h2></div>
+        <p>From playful shapes to comforting scents, find a little something that feels like you.</p>
+      </div>
+      <div class="category-grid" id="categoryGrid"></div>
+    </section>
+
+    <section class="section shop-section" id="shop">
+      <div class="section-heading shop-heading">
+        <div><p class="eyebrow">THE SAMPLE COLLECTION</p><h2>Small things, <em>special feels.</em></h2></div>
+        <div class="shop-tools">
+          <label class="filter-label" for="categoryFilter">Collection</label>
+          <select id="categoryFilter"><option value="all">All collections</option></select>
+          <label class="filter-label" for="sortSelect">Sort</label>
+          <select id="sortSelect"><option value="featured">Featured</option><option value="low-high">Price: low to high</option><option value="high-low">Price: high to low</option><option value="name">Name A–Z</option></select>
+        </div>
+      </div>
+      <p class="demo-note">ⓘ These are temporary sample products and prices, not the final catalogue.</p>
+      <div class="product-grid" id="productGrid" aria-live="polite"></div>
+      <p class="empty-state hidden" id="emptyState">No products match your search. Try another term or collection.</p>
+    </section>
+
+    <section class="story-section" id="story">
+      <div class="story-mark" aria-hidden="true">AN</div>
+      <div><p class="eyebrow">A NOTE FROM AYE NOOR</p><h2>Small rituals.<br><em>Lasting warmth.</em></h2>
+        <p>This is a working design prototype. Our final brand story, product photography, policies and real catalogue will be added when they're ready.</p>
+        <a class="text-link" href="#shop">Explore sample products <span aria-hidden="true">↗</span></a>
+      </div>
+      <div class="story-spark" aria-hidden="true">✳</div>
+    </section>
+  </main>
+
+  <footer class="footer" id="contact">
+    <a class="wordmark footer-wordmark" href="#" aria-label="Aye Noor home">AYE <span>NOOR</span><small>OBJECTS OF LIGHT</small></a>
+    <div class="footer-text">
+      <p>Warm light. Thoughtful gifting. A work in progress.</p>
+      <p>Contact details will be added once they are confirmed.</p>
+    </div>
+    <span class="footer-copy">© <span id="year"></span> Aye Noor · Development prototype</span>
+  </footer>
+
+  <div class="overlay hidden" id="cartOverlay"></div>
+  <aside class="cart-drawer" id="cartDrawer" role="dialog" aria-modal="true" aria-labelledby="cartTitle" aria-hidden="true" inert>
+    <div class="drawer-header"><div><p class="eyebrow">YOUR SELECTION</p><h2 id="cartTitle">Your cart</h2></div><button class="close-button" id="closeCart" type="button" aria-label="Close cart">×</button></div>
+    <p class="drawer-demo">Demo cart only — checkout is not connected yet.</p>
+    <div class="cart-items" id="cartItems"></div>
+    <div class="cart-empty" id="cartEmpty"><span aria-hidden="true">✳</span><h3>Your cart is empty</h3><p>Find a little something to make someone's day.</p></div>
+    <div class="cart-footer"><div class="subtotal-row"><span>Subtotal</span><strong id="cartSubtotal">Rs. 0</strong></div><p>Shipping will be calculated when checkout is built.</p><button class="dark-button full-button" id="checkoutDemo" type="button">Checkout <span aria-hidden="true">↗</span></button></div>
+  </aside>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

@@ -1,0 +1,12 @@
+# Packages are re-downloaded with npm install, never saved in Git
+node_modules/
+
+# Secrets (added in a later step) must never be saved in Git
+.env
+.env.*
+!.env.example
+
+# Logs and system files
+*.log
+.DS_Store
+Thumbs.db
