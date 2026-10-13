@@ -1,0 +1,95 @@
+﻿<%- include("partials/header") %>
+
+<section class="section cart-page-section">
+  <nav class="breadcrumbs" aria-label="Breadcrumb">
+    <a href="/">Home</a>
+    <span aria-hidden="true">/</span>
+    <a href="/shop">Shop</a>
+    <span aria-hidden="true">/</span>
+    <span aria-current="page">Shopping Cart</span>
+  </nav>
+
+  <div class="section-heading cart-page-heading">
+    <div>
+      <p class="eyebrow">SERVER-VERIFIED CART</p>
+      <h1>Your <em>shopping cart.</em></h1>
+    </div>
+    <a class="text-link" href="/shop">Continue shopping <span aria-hidden="true">↗</span></a>
+  </div>
+
+  <div class="cart-page-empty hidden" id="cartPageEmpty">
+    <span class="empty-star" aria-hidden="true">✳</span>
+    <h2>Your cart is currently empty</h2>
+    <p>Explore our floral, bear, and scented candles to add something warm to your cart.</p>
+    <a class="dark-button" href="/shop">Browse the collection <span aria-hidden="true">↗</span></a>
+  </div>
+
+  <div class="cart-page-layout hidden" id="cartPageContent">
+    <div class="cart-table-wrap">
+      <div class="cart-table-header">
+        <span>Product</span>
+        <span>Price</span>
+        <span>Quantity</span>
+        <span>Total</span>
+      </div>
+      <div class="cart-page-rows" id="cartPageRows" aria-live="polite"></div>
+      <div class="cart-table-footer">
+        <p class="demo-note">ⓘ The browser stores only product SKU and quantity. All prices and totals are verified by the Express server.</p>
+        <button class="clear-cart-button" id="clearCartBtn" type="button">Clear entire cart</button>
+      </div>
+    </div>
+
+    <aside class="cart-summary-card" aria-label="Order summary">
+      <h2>Order summary</h2>
+
+      <div class="shipping-meter">
+        <p class="shipping-meter-text" id="cartPageShippingText">Checking free-shipping eligibility…</p>
+        <div class="shipping-bar-track" aria-hidden="true">
+          <div class="shipping-bar-fill" id="cartPageShippingBar" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <dl class="summary-lines">
+        <div class="summary-line">
+          <dt>Items (<span id="summaryItemCount">0</span>)</dt>
+          <dd id="summarySubtotal">Rs. 0</dd>
+        </div>
+        <div class="summary-line savings-line hidden" id="summarySavingsRow">
+          <dt>Sale savings</dt>
+          <dd id="summarySavings">− Rs. 0</dd>
+        </div>
+        <div class="summary-line">
+          <dt>Estimated delivery</dt>
+          <dd id="summaryShipping">Rs. 0</dd>
+        </div>
+        <div class="summary-line summary-total">
+          <dt>Estimated total</dt>
+          <dd id="summaryTotal">Rs. 0</dd>
+        </div>
+      </dl>
+
+      <button class="dark-button full-button" id="cartPageCheckoutBtn" type="button">
+        Proceed to Checkout <span aria-hidden="true">↗</span>
+      </button>
+      <p class="summary-footnote">Cash on Delivery and shipping address details will be collected on the checkout page (Step 7).</p>
+    </aside>
+  </div>
+</section>
+
+<% if (suggestedProducts && suggestedProducts.length > 0) { %>
+  <section class="section shop-section">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">POPULAR PICKS</p>
+        <h2>Add a little <em>extra glow.</em></h2>
+      </div>
+    </div>
+    <div class="product-grid">
+      <% suggestedProducts.forEach(item => { %>
+        <%- include("partials/product-card", { product: item }) %>
+      <% }) %>
+    </div>
+  </section>
+<% } %>
+
+<%- include("partials/footer") %>

@@ -18,7 +18,9 @@
       </div>
       <button class="close-button" id="closeCart" type="button" aria-label="Close cart">×</button>
     </div>
-    <p class="drawer-demo">Demo cart only — checkout is not connected yet.</p>
+    <div class="drawer-shipping-banner" id="drawerShippingNote">
+      Free shipping on orders from <%= formatMoney(storeConfig.freeShippingThreshold) %>.
+    </div>
     <div class="cart-items" id="cartItems"></div>
     <div class="cart-empty" id="cartEmpty">
       <span aria-hidden="true">✳</span>
@@ -30,8 +32,14 @@
         <span>Subtotal</span>
         <strong id="cartSubtotal">Rs. 0</strong>
       </div>
-      <p>Shipping will be calculated when checkout is built.</p>
-      <button class="dark-button full-button" id="checkoutDemo" type="button">Checkout <span aria-hidden="true">↗</span></button>
+      <div class="drawer-meta-row">
+        <span>Estimated shipping</span>
+        <span id="cartDrawerShipping">Calculated at checkout</span>
+      </div>
+      <div class="drawer-actions">
+        <a class="outline-button full-button" href="/cart">View full cart</a>
+        <button class="dark-button full-button" id="checkoutDemo" type="button">Checkout <span aria-hidden="true">↗</span></button>
+      </div>
     </div>
   </aside>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>

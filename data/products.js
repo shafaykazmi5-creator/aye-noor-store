@@ -1,5 +1,7 @@
 ﻿"use strict";
 
+const STORE_CONFIG = require("./config");
+
 const CATEGORY_VISUALS = {
   "Flower Candles": { bg: "#e8c9c0", glyph: "#b77970", mark: "✿" },
   "Bear Candles": { bg: "#dfc8b1", glyph: "#a47c5e", mark: "♡" },
@@ -165,7 +167,7 @@ function enrichProduct(p) {
     onSale: p.salePrice < p.price,
     gallery: [
       { label: "Front view", mark: v.mark, bg: v.bg, glyph: v.glyph },
-      { label: "Detail & texture", mark: `${v.mark} ✳`, bg: v.bg, glyph: v.glyph },
+      { label: "Detail & texture", mark: `${v.mark}·✳`, bg: v.bg, glyph: v.glyph },
       { label: "Scale & styling", mark: "✳", bg: v.bg, glyph: v.glyph }
     ]
   };
@@ -199,10 +201,100 @@ function getActiveCategories() {
   }));
 }
 
+/**
+ * Server-side cart calculation.
+ * Never trusts client prices: accepts only [{ sku, qty }] and computes all totals on the server.
+ */
+function buildCartQuote(rawItems) {
+  const activeMap = new Map(getActiveProducts().map(p => [p.sku, p]));
+  const merged = new Map();
+  const adjustments = [];
+
+  if (Array.isArray(rawItems)) {
+    for (const entry of rawItems.slice(0, 50)) {
+      if (!entry || typeof entry.sku !== "string") continue;
+      const sku = entry.sku.trim();
+      const qty = Math.floor(Number(entry.qty));
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+      merged.set(sku, (merged.get(sku) || 0) + qty);
+    }
+  }
+
+  const items = [];
+  let itemCount = 0;
+  let subtotal = 0;
+  let regularSubtotal = 0;
+
+  for (const [sku, requestedQty] of merged.entries()) {
+    const product = activeMap.get(sku);
+    if (!product || product.stock < 1) {
+      adjustments.push(`Removed unavailable item (${sku}).`);
+      continue;
+    }
+
+    const finalQty = Math.min(requestedQty, product.stock);
+    if (finalQty < requestedQty) {
+      adjustments.push(`${product.name} quantity was capped at available stock (${product.stock}).`);
+    }
+
+    const lineTotal = product.salePrice * finalQty;
+    const regularLineTotal = product.price * finalQty;
+
+    itemCount += finalQty;
+    subtotal += lineTotal;
+    regularSubtotal += regularLineTotal;
+
+    items.push({
+      sku: product.sku,
+      slug: product.slug,
+      name: product.name,
+      category: product.category,
+      scent: product.scent,
+      size: product.size,
+      price: product.price,
+      salePrice: product.salePrice,
+      onSale: product.onSale,
+      stock: product.stock,
+      qty: finalQty,
+      lineTotal,
+      regularLineTotal,
+      visual: product.visual
+    });
+  }
+
+  const threshold = STORE_CONFIG.freeShippingThreshold;
+  const shippingFee = itemCount === 0
+    ? 0
+    : (subtotal >= threshold ? 0 : STORE_CONFIG.shippingFee);
+  const amountForFreeShipping = itemCount === 0
+    ? threshold
+    : Math.max(0, threshold - subtotal);
+  const freeShippingProgress = threshold > 0
+    ? Math.min(100, Math.round((subtotal / threshold) * 100))
+    : 100;
+  const savings = Math.max(0, regularSubtotal - subtotal);
+  const total = subtotal + shippingFee;
+
+  return {
+    items,
+    itemCount,
+    subtotal,
+    regularSubtotal,
+    savings,
+    shippingFee,
+    freeShippingThreshold: threshold,
+    amountForFreeShipping,
+    freeShippingProgress,
+    total,
+    adjustments
+  };
+}
+
 module.exports = {
   getActiveProducts,
   getProductBySlug,
   getRelatedProducts,
   getActiveCategories,
+  buildCartQuote,
   formatMoney
 };

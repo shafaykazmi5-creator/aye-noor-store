@@ -2,11 +2,13 @@
 
 const path = require("path");
 const express = require("express");
+const STORE_CONFIG = require("./data/config");
 const {
   getActiveProducts,
   getProductBySlug,
   getRelatedProducts,
   getActiveCategories,
+  buildCartQuote,
   formatMoney
 } = require("./data/products");
 
@@ -18,22 +20,16 @@ app.disable("x-powered-by");
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 
+// Parse JSON request bodies (used by /api/cart/quote) with a safe 16kb size limit
+app.use(express.json({ limit: "16kb" }));
+
 app.use(express.static(path.join(__dirname, "public")));
 
 app.use((req, res, next) => {
-  const products = getActiveProducts();
   res.locals.formatMoney = formatMoney;
+  res.locals.storeConfig = STORE_CONFIG;
   res.locals.currentPath = req.path;
   res.locals.searchQuery = typeof req.query.q === "string" ? req.query.q.trim() : "";
-  res.locals.cartCatalog = products.map(p => ({
-    sku: p.sku,
-    slug: p.slug,
-    name: p.name,
-    category: p.category,
-    salePrice: p.salePrice,
-    stock: p.stock,
-    visual: p.visual
-  }));
   next();
 });
 
@@ -86,7 +82,6 @@ app.get("/shop", (req, res) => {
   });
 });
 
-// Individual product page (/product/:slug)
 app.get("/product/:slug", (req, res) => {
   const product = getProductBySlug(req.params.slug);
   if (!product) {
@@ -117,6 +112,23 @@ app.get("/product/:slug", (req, res) => {
     specs,
     relatedProducts
   });
+});
+
+// Dedicated Cart Page (/cart)
+app.get("/cart", (req, res) => {
+  const suggestedProducts = getActiveProducts().filter(p => p.featured).slice(0, 4);
+  res.render("cart", {
+    pageTitle: "Your Shopping Cart — Aye Noor",
+    pageDescription: "Review the candles in your Aye Noor shopping cart.",
+    suggestedProducts
+  });
+});
+
+// Server-side cart pricing API: receives [{ sku, qty }] and returns verified prices & totals
+app.post("/api/cart/quote", (req, res) => {
+  const rawItems = req.body && Array.isArray(req.body.items) ? req.body.items : [];
+  const quote = buildCartQuote(rawItems);
+  res.json(quote);
 });
 
 app.get("/health", (req, res) => {

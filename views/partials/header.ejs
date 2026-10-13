@@ -6,12 +6,13 @@
   <meta name="description" content="<%= pageDescription %>">
   <title><%= pageTitle %></title>
   <link rel="stylesheet" href="/styles.css">
-  <script id="catalogData" type="application/json"><%- JSON.stringify(cartCatalog).replace(/</g, "\\u003c") %></script>
   <script src="/script.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
-  <div class="announcement">A LITTLE LIGHT, A LOT OF FEELING <span aria-hidden="true">✳</span> AYE NOOR SAMPLE STORE</div>
+  <div class="announcement">
+    FREE SHIPPING ON ORDERS FROM <%= formatMoney(storeConfig.freeShippingThreshold) %> <span aria-hidden="true">✳</span> AYE NOOR SAMPLE STORE
+  </div>
 
   <header class="site-header">
     <button class="menu-button" id="menuButton" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="mainNav">
