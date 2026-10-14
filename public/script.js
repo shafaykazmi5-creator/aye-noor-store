@@ -519,16 +519,17 @@
       phoneInput.addEventListener("input", () => {
         const compact = phoneInput.value.replace(/[\s\-().]/g, "");
         if (!compact) {
-          phoneHint.textContent = "Accepts 03325007200, 0332-5007200, or +923325007200 (auto-formatted for web & WhatsApp)";
+          phoneHint.textContent = "Format: 03XX-XXXXXXX (11 digits) or +92 3XX XXXXXXX";
           phoneHint.style.color = "";
           return;
         }
         const m = compact.match(/^(?:\+92|0092|92)?0?(3\d{2})(\d{7})$/);
         if (m) {
-          phoneHint.textContent = `✓ Recognized: 0${m[1]}-${m[2]} (WhatsApp: +92${m[1]}${m[2]})`;
+          phoneHint.textContent = `✓ Valid 11-digit mobile number recognized`;
           phoneHint.style.color = "var(--sage)";
         } else {
-          phoneHint.textContent = "Enter 11 digits starting with 03 (e.g. 03325007200) or +923…";
+          const digitsOnly = compact.replace(/\D/g, "");
+          phoneHint.textContent = `Currently ${digitsOnly.length} digits — Pakistani mobile numbers need 11 digits (03XX-XXXXXXX).`;
           phoneHint.style.color = "var(--accent-text)";
         }
       });
