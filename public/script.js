@@ -67,6 +67,7 @@
 
       renderDrawerQuote(quote);
       renderCartPageQuote(quote);
+      renderCheckoutQuote(quote);
 
       if (quote.adjustments && quote.adjustments.length > 0) {
         showToast(quote.adjustments[0]);
@@ -151,6 +152,53 @@
 
     $("cartEmpty").classList.toggle("hidden", quote.itemCount > 0);
     cartItemsEl.classList.toggle("hidden", quote.itemCount === 0);
+    if ($("drawerCheckoutLink")) {
+      $("drawerCheckoutLink").classList.toggle("disabled-link", quote.itemCount === 0);
+      $("drawerCheckoutLink").setAttribute("aria-disabled", quote.itemCount === 0 ? "true" : "false");
+    }
+  }
+
+  function renderCheckoutQuote(quote) {
+    const emptyEl = $("checkoutEmpty");
+    const contentEl = $("checkoutContent");
+    const itemsEl = $("checkoutSummaryItems");
+    if (!emptyEl || !contentEl || !itemsEl) return;
+
+    emptyEl.classList.toggle("hidden", quote.itemCount > 0);
+    contentEl.classList.toggle("hidden", quote.itemCount === 0);
+    itemsEl.innerHTML = "";
+
+    if (quote.itemCount === 0) return;
+
+    quote.items.forEach(item => {
+      const v = item.visual || { bg: "#e8d9ca", glyph: "#a98d73", mark: "✳" };
+      const name = escapeHTML(item.name);
+      const row = document.createElement("div");
+      row.className = "checkout-mini-item";
+      row.innerHTML = `
+        <div class="checkout-mini-art" style="--productbg:${v.bg};--glyph:${v.glyph}" aria-hidden="true">${v.mark}</div>
+        <div class="checkout-mini-info">
+          <h4>${name}</h4>
+          <small>Qty: ${item.qty} × ${money(item.salePrice)}</small>
+        </div>
+        <div class="checkout-mini-total">${money(item.lineTotal)}</div>
+      `;
+      itemsEl.appendChild(row);
+    });
+
+    if ($("checkoutItemCount")) $("checkoutItemCount").textContent = quote.itemCount;
+    if ($("checkoutSubtotal")) $("checkoutSubtotal").textContent = money(quote.subtotal);
+    if ($("checkoutSavingsRow") && $("checkoutSavings")) {
+      $("checkoutSavingsRow").classList.toggle("hidden", quote.savings <= 0);
+      $("checkoutSavings").textContent = `− ${money(quote.savings)}`;
+    }
+    if ($("checkoutShipping")) {
+      $("checkoutShipping").textContent = quote.shippingFee === 0 ? "Free" : money(quote.shippingFee);
+    }
+    if ($("checkoutShippingNote")) {
+      $("checkoutShippingNote").textContent = quote.shippingFee === 0 ? "Free threshold met" : "Standard";
+    }
+    if ($("checkoutTotal")) $("checkoutTotal").textContent = money(quote.total);
   }
 
   function renderCartPageQuote(quote) {
@@ -453,9 +501,101 @@
     else if (isMenuOpen()) { setMenu(false); $("menuButton").focus(); }
   });
 
-  const checkoutNotice = () => showToast("Checkout form is up next in Step 7!");
-  if ($("checkoutDemo")) $("checkoutDemo").addEventListener("click", checkoutNotice);
-  if ($("cartPageCheckoutBtn")) $("cartPageCheckoutBtn").addEventListener("click", checkoutNotice);
+  if ($("drawerCheckoutLink")) {
+    $("drawerCheckoutLink").addEventListener("click", event => {
+      if ($("drawerCheckoutLink").classList.contains("disabled-link")) {
+        event.preventDefault();
+        showToast("Your cart is empty. Add a candle first.");
+      }
+    });
+  }
+
+  /* ---------- Checkout Form Submission (Step 7) ---------- */
+  const checkoutForm = $("checkoutForm");
+  if (checkoutForm) {
+    checkoutForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      const feedback = $("checkoutFeedback");
+      const previewBox = $("checkoutPreviewBox");
+      const submitBtn = $("checkoutSubmitBtn");
+
+      const items = [...cart.entries()].map(([sku, qty]) => ({ sku, qty }));
+      const selectedPayment = checkoutForm.querySelector("input[name='paymentMethod']:checked");
+
+      const payload = {
+        items,
+        fullName: $("checkoutName").value.trim(),
+        phone: $("checkoutPhone").value.trim(),
+        email: $("checkoutEmail").value.trim(),
+        address: $("checkoutAddress").value.trim(),
+        area: $("checkoutArea").value.trim(),
+        city: $("checkoutCity").value.trim(),
+        province: $("checkoutProvince").value,
+        notes: $("checkoutNotes").value.trim(),
+        paymentMethod: selectedPayment ? selectedPayment.value : "cod",
+        whatsappOptIn: $("checkoutWhatsappOptIn").checked
+      };
+
+      submitBtn.disabled = true;
+      previewBox.classList.add("hidden");
+      feedback.className = "form-feedback";
+      feedback.textContent = "Verifying your address, phone number, and cart prices on the server…";
+
+      try {
+        const res = await fetch("/api/checkout/preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          feedback.className = "form-feedback error";
+          feedback.textContent = data.error || "Please check your checkout details and try again.";
+          if (data.field) {
+            const fieldMap = {
+              fullName: "checkoutName",
+              phone: "checkoutPhone",
+              email: "checkoutEmail",
+              address: "checkoutAddress",
+              area: "checkoutArea",
+              city: "checkoutCity",
+              province: "checkoutProvince",
+              notes: "checkoutNotes"
+            };
+            const targetEl = $(fieldMap[data.field]);
+            if (targetEl) targetEl.focus();
+          }
+          return;
+        }
+
+        feedback.className = "form-feedback success";
+        feedback.textContent = `✓ Checkout details verified by the server (${data.previewNumber}).`;
+
+        const c = data.customer;
+        const q = data.quote;
+        previewBox.innerHTML = `
+          <h3>Server-Verified Order Payload (${escapeHTML(data.previewNumber)})</h3>
+          <p class="preview-sub">This payload passed all server validations and is ready for PostgreSQL order creation in Step 10:</p>
+          <dl class="preview-dl">
+            <div><dt>Customer</dt><dd>${escapeHTML(c.fullName)}</dd></div>
+            <div><dt>WhatsApp / Mobile</dt><dd>${escapeHTML(c.phoneLocal)} <code>(${escapeHTML(c.phoneE164)})</code></dd></div>
+            <div><dt>Delivery Address</dt><dd>${escapeHTML(c.address)}${c.area ? ", " + escapeHTML(c.area) : ""}, ${escapeHTML(c.city)}, ${escapeHTML(c.province)}</dd></div>
+            <div><dt>Payment Method</dt><dd>${escapeHTML(c.paymentMethod)}</dd></div>
+            <div><dt>WhatsApp Alerts</dt><dd>${c.whatsappOptIn ? "Opted in for customer WhatsApp confirmation" : "Owner alert only"}</dd></div>
+            <div><dt>Verified Total</dt><dd><strong>${money(q.total)}</strong> (${q.itemCount} items, shipping: ${q.shippingFee === 0 ? "Free" : money(q.shippingFee)})</dd></div>
+          </dl>
+        `;
+        previewBox.classList.remove("hidden");
+        previewBox.scrollIntoView({ behavior: scrollBehavior(), block: "nearest" });
+      } catch {
+        feedback.className = "form-feedback error";
+        feedback.textContent = "Could not reach the server. Please check your connection and try again.";
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  }
 
   window.addEventListener("storage", event => {
     if (event.key === CART_STORAGE_KEY) {

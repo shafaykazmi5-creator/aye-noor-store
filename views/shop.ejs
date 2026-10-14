@@ -27,6 +27,12 @@
       <noscript><button class="dark-button" type="submit">Apply</button></noscript>
     </form>
   </div>
+  <% if (searchQuery) { %>
+    <div class="active-search-chip">
+      <span>Showing results for "<strong><%= searchQuery %></strong>"</span>
+      <a href="/shop<%= selectedCategory !== 'all' ? '?category=' + encodeURIComponent(selectedCategory) : '' %>">Clear search ×</a>
+    </div>
+  <% } %>
   <p class="demo-note">ⓘ These are temporary sample products and prices, not the final catalogue.</p>
   <div class="product-grid" id="productGrid" aria-live="polite">
     <% products.forEach(product => { %>

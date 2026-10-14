@@ -1,0 +1,164 @@
+<%- include("partials/header") %>
+
+<section class="section checkout-page-section">
+  <nav class="breadcrumbs" aria-label="Breadcrumb">
+    <a href="/">Home</a>
+    <span aria-hidden="true">/</span>
+    <a href="/shop">Shop</a>
+    <span aria-hidden="true">/</span>
+    <a href="/cart">Shopping Cart</a>
+    <span aria-hidden="true">/</span>
+    <span aria-current="page">Checkout</span>
+  </nav>
+
+  <div class="section-heading checkout-heading">
+    <div>
+      <p class="eyebrow">SECURE SERVER-VERIFIED CHECKOUT</p>
+      <h1>Complete your <em>order details.</em></h1>
+    </div>
+    <a class="text-link" href="/cart">← Back to cart</a>
+  </div>
+
+  <div class="cart-page-empty hidden" id="checkoutEmpty">
+    <span class="empty-star" aria-hidden="true">✳</span>
+    <h2>Your cart is empty</h2>
+    <p>Add one or more candles to your cart before proceeding to checkout.</p>
+    <a class="dark-button" href="/shop">Browse candles <span aria-hidden="true">↗</span></a>
+  </div>
+
+  <div class="checkout-layout hidden" id="checkoutContent">
+    <form class="checkout-form-card" id="checkoutForm" novalidate>
+      <div class="tbd-callout checkout-mode-banner">
+        <strong>ⓘ Step 7 Checkout Validation Active:</strong> Shipping rates (<%= formatMoney(storeConfig.shippingFee) %>, free from <%= formatMoney(storeConfig.freeShippingThreshold) %>) are configurable placeholders. Submitting this form verifies your Pakistani mobile number, address, and server-side totals. Permanent database order creation &amp; stock deduction arrive in Part C (Steps 8–10).
+      </div>
+
+      <fieldset class="checkout-fieldset">
+        <legend>1. Contact information</legend>
+        <div class="form-row-two">
+          <div class="form-field">
+            <label for="checkoutName">Recipient full name *</label>
+            <input id="checkoutName" name="fullName" type="text" required minlength="2" maxlength="80" autocomplete="name" placeholder="e.g. Muhammad Ali">
+          </div>
+
+          <div class="form-field">
+            <label for="checkoutPhone">Mobile / WhatsApp number (Pakistan) *</label>
+            <input id="checkoutPhone" name="phone" type="tel" required inputmode="tel" autocomplete="tel" placeholder="0300-1234567 or +92 300 1234567">
+            <small class="field-hint">Format: 03XX-XXXXXXX or +92 3XX XXXXXXX (used for delivery &amp; WhatsApp confirmation)</small>
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label for="checkoutEmail">Email address <span class="optional-tag">(optional)</span></label>
+          <input id="checkoutEmail" name="email" type="email" maxlength="120" autocomplete="email" placeholder="you@example.com">
+        </div>
+
+        <label class="checkbox-row" for="checkoutWhatsappOptIn">
+          <input id="checkoutWhatsappOptIn" name="whatsappOptIn" type="checkbox" checked>
+          <span>Send automatic order confirmation and status updates to my WhatsApp number.</span>
+        </label>
+      </fieldset>
+
+      <fieldset class="checkout-fieldset">
+        <legend>2. Delivery address</legend>
+        <div class="form-field">
+          <label for="checkoutAddress">House, street &amp; block / phase *</label>
+          <input id="checkoutAddress" name="address" type="text" required minlength="6" maxlength="220" autocomplete="street-address" placeholder="e.g. House 14, Street 6, Sector F-8/3">
+        </div>
+
+        <div class="form-field">
+          <label for="checkoutArea">Area / neighbourhood / nearby landmark <span class="optional-tag">(optional)</span></label>
+          <input id="checkoutArea" name="area" type="text" maxlength="100" placeholder="e.g. Near Park / Main Markaz">
+        </div>
+
+        <div class="form-row-two">
+          <div class="form-field">
+            <label for="checkoutCity">City *</label>
+            <input id="checkoutCity" name="city" type="text" required minlength="2" maxlength="60" list="pakistanCities" autocomplete="address-level2" placeholder="e.g. Rawalpindi">
+            <datalist id="pakistanCities">
+              <% storeConfig.popularCities.forEach(c => { %>
+                <option value="<%= c %>"></option>
+              <% }) %>
+            </datalist>
+          </div>
+
+          <div class="form-field">
+            <label for="checkoutProvince">Province / Territory *</label>
+            <select id="checkoutProvince" name="province" required>
+              <option value="">Select province…</option>
+              <% storeConfig.provinces.forEach(prov => { %>
+                <option value="<%= prov %>"><%= prov %></option>
+              <% }) %>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label for="checkoutNotes">Delivery or gift note <span class="optional-tag">(optional)</span></label>
+          <textarea id="checkoutNotes" name="notes" rows="3" maxlength="500" placeholder="Special delivery instructions or a short gift message…"></textarea>
+        </div>
+      </fieldset>
+
+      <fieldset class="checkout-fieldset">
+        <legend>3. Payment method</legend>
+        <div class="payment-options">
+          <% storeConfig.paymentMethods.forEach(method => { %>
+            <label class="payment-option-card <%= method.enabled ? 'enabled' : 'disabled' %>">
+              <input
+                type="radio"
+                name="paymentMethod"
+                value="<%= method.id %>"
+                <%= method.enabled ? 'checked' : 'disabled' %>
+              >
+              <div>
+                <strong><%= method.label %></strong>
+                <p><%= method.description %></p>
+              </div>
+            </label>
+          <% }) %>
+        </div>
+      </fieldset>
+
+      <div class="form-feedback hidden" id="checkoutFeedback" role="status" aria-live="polite"></div>
+
+      <div class="checkout-preview-result hidden" id="checkoutPreviewBox" aria-live="polite"></div>
+
+      <button class="dark-button full-button checkout-submit-btn" id="checkoutSubmitBtn" type="submit">
+        Verify &amp; Preview Order <span aria-hidden="true">↗</span>
+      </button>
+    </form>
+
+    <aside class="cart-summary-card checkout-summary-card" aria-label="Checkout order summary">
+      <div class="summary-card-header">
+        <h2>Your order</h2>
+        <a class="inline-underline" href="/cart">Edit cart</a>
+      </div>
+
+      <div class="checkout-summary-items" id="checkoutSummaryItems"></div>
+
+      <dl class="summary-lines">
+        <div class="summary-line">
+          <dt>Items (<span id="checkoutItemCount">0</span>)</dt>
+          <dd id="checkoutSubtotal">Rs. 0</dd>
+        </div>
+        <div class="summary-line savings-line hidden" id="checkoutSavingsRow">
+          <dt>Sale savings</dt>
+          <dd id="checkoutSavings">− Rs. 0</dd>
+        </div>
+        <div class="summary-line">
+          <dt>Delivery (<span id="checkoutShippingNote">Standard</span>)</dt>
+          <dd id="checkoutShipping">Rs. 0</dd>
+        </div>
+        <div class="summary-line summary-total">
+          <dt>Total payable</dt>
+          <dd id="checkoutTotal">Rs. 0</dd>
+        </div>
+      </dl>
+
+      <p class="summary-footnote">
+        All prices and stock limits are re-checked on the Aye Noor server before an order is accepted.
+      </p>
+    </aside>
+  </div>
+</section>
+
+<%- include("partials/footer") %>

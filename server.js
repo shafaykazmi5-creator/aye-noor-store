@@ -24,6 +24,19 @@ const CONTACT_TOPICS = ["General Inquiry", "Order Question", "Gifting / Bulk Ord
 
 // Replace line breaks and other control characters so visitor text can't fake extra lines in logs
 const cleanLine = value => value.replace(/[\u0000-\u001F\u007F]+/g, " ").trim();
+let checkoutPreviewCounter = 1000;
+
+function parsePakistaniMobile(raw) {
+  if (typeof raw !== "string") return { valid: false };
+  const compact = raw.replace(/[\s\-().]/g, "");
+  const match = compact.match(/^(?:\+92|0092|92|0)?(3\d{2})(\d{7})$/);
+  if (!match) return { valid: false };
+  return {
+    valid: true,
+    local: `0${match[1]}-${match[2]}`,
+    e164: `+92${match[1]}${match[2]}`
+  };
+}
 
 app.disable("x-powered-by");
 
@@ -134,6 +147,13 @@ app.get("/cart", (req, res) => {
   });
 });
 
+app.get("/checkout", (req, res) => {
+  res.render("checkout", {
+    pageTitle: "Checkout — Aye Noor",
+    pageDescription: "Enter your delivery details and review your Aye Noor candle order."
+  });
+});
+
 // Static Brand & Help Pages (Step 6)
 app.get("/about", (req, res) => {
   const categories = getActiveCategories();
@@ -177,6 +197,98 @@ app.post("/api/cart/quote", (req, res) => {
   const rawItems = req.body && Array.isArray(req.body.items) ? req.body.items : [];
   const quote = buildCartQuote(rawItems);
   res.json(quote);
+});
+
+// Server-validated Checkout Preview API (Step 7)
+app.post("/api/checkout/preview", (req, res) => {
+  const body = req.body || {};
+  const rawItems = Array.isArray(body.items) ? body.items : [];
+  const quote = buildCartQuote(rawItems);
+
+  if (quote.itemCount === 0) {
+    return res.status(400).json({
+      error: "Your cart is empty or the selected items are no longer available.",
+      field: "cart"
+    });
+  }
+
+  const fullName = typeof body.fullName === "string" ? cleanLine(body.fullName) : "";
+  const rawPhone = typeof body.phone === "string" ? cleanLine(body.phone) : "";
+  const email = typeof body.email === "string" ? cleanLine(body.email) : "";
+  const address = typeof body.address === "string" ? cleanLine(body.address) : "";
+  const area = typeof body.area === "string" ? cleanLine(body.area) : "";
+  const city = typeof body.city === "string" ? cleanLine(body.city) : "";
+  const province = typeof body.province === "string" ? cleanLine(body.province) : "";
+  const notes = typeof body.notes === "string" ? cleanLine(body.notes) : "";
+  const paymentMethod = typeof body.paymentMethod === "string" ? cleanLine(body.paymentMethod) : "cod";
+  const whatsappOptIn = Boolean(body.whatsappOptIn);
+
+  if (fullName.length < 2 || fullName.length > 80) {
+    return res.status(400).json({ error: "Please enter the recipient's full name (2–80 characters).", field: "fullName" });
+  }
+
+  const parsedPhone = parsePakistaniMobile(rawPhone);
+  if (!parsedPhone.valid) {
+    return res.status(400).json({
+      error: "Please enter a valid Pakistani mobile number (e.g. 0300-1234567 or +92 300 1234567).",
+      field: "phone"
+    });
+  }
+
+  if (email && (email.length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+    return res.status(400).json({ error: "Please enter a valid email address or leave it blank.", field: "email" });
+  }
+
+  if (address.length < 6 || address.length > 220) {
+    return res.status(400).json({ error: "Please enter a complete house/street delivery address (at least 6 characters).", field: "address" });
+  }
+
+  if (area.length > 100) {
+    return res.status(400).json({ error: "Area / sector / landmark must be under 100 characters.", field: "area" });
+  }
+
+  if (city.length < 2 || city.length > 60) {
+    return res.status(400).json({ error: "Please enter your delivery city.", field: "city" });
+  }
+
+  if (!STORE_CONFIG.provinces.includes(province)) {
+    return res.status(400).json({ error: "Please select a valid province or territory.", field: "province" });
+  }
+
+  if (notes.length > 500) {
+    return res.status(400).json({ error: "Order / gift notes must be under 500 characters.", field: "notes" });
+  }
+
+  const allowedPayment = STORE_CONFIG.paymentMethods.find(m => m.id === paymentMethod && m.enabled);
+  if (!allowedPayment) {
+    return res.status(400).json({ error: "Please select an available payment method (Cash on Delivery).", field: "paymentMethod" });
+  }
+
+  checkoutPreviewCounter += 1;
+  const previewNumber = `PREVIEW-${checkoutPreviewCounter}`;
+
+  console.log(
+    `[Checkout Validated ${previewNumber}] Customer: ${JSON.stringify(fullName)} | Phone: ${parsedPhone.e164} | City: ${JSON.stringify(city)}, ${province} | Items: ${quote.itemCount} | Total: ${formatMoney(quote.total)}`
+  );
+
+  res.json({
+    ok: true,
+    previewNumber,
+    customer: {
+      fullName,
+      phoneLocal: parsedPhone.local,
+      phoneE164: parsedPhone.e164,
+      email: email || null,
+      address,
+      area: area || null,
+      city,
+      province,
+      notes: notes || null,
+      paymentMethod: allowedPayment.label,
+      whatsappOptIn
+    },
+    quote
+  });
 });
 
 // Server-validated Contact Inquiry API (development mode)
