@@ -513,6 +513,26 @@
   /* ---------- Checkout Form Submission (Step 7) ---------- */
   const checkoutForm = $("checkoutForm");
   if (checkoutForm) {
+    const phoneInput = $("checkoutPhone");
+    const phoneHint = $("phoneHint");
+    if (phoneInput && phoneHint) {
+      phoneInput.addEventListener("input", () => {
+        const compact = phoneInput.value.replace(/[\s\-().]/g, "");
+        if (!compact) {
+          phoneHint.textContent = "Accepts 03325007200, 0332-5007200, or +923325007200 (auto-formatted for web & WhatsApp)";
+          phoneHint.style.color = "";
+          return;
+        }
+        const m = compact.match(/^(?:\+92|0092|92)?0?(3\d{2})(\d{7})$/);
+        if (m) {
+          phoneHint.textContent = `✓ Recognized: 0${m[1]}-${m[2]} (WhatsApp: +92${m[1]}${m[2]})`;
+          phoneHint.style.color = "var(--sage)";
+        } else {
+          phoneHint.textContent = "Enter 11 digits starting with 03 (e.g. 03325007200) or +923…";
+          phoneHint.style.color = "var(--accent-text)";
+        }
+      });
+    }
     checkoutForm.addEventListener("submit", async event => {
       event.preventDefault();
       const feedback = $("checkoutFeedback");

@@ -29,12 +29,13 @@ let checkoutPreviewCounter = 1000;
 function parsePakistaniMobile(raw) {
   if (typeof raw !== "string") return { valid: false };
   const compact = raw.replace(/[\s\-().]/g, "");
-  const match = compact.match(/^(?:\+92|0092|92|0)?(3\d{2})(\d{7})$/);
+  const match = compact.match(/^(?:\+92|0092|92)?0?(3\d{2})(\d{7})$/);
   if (!match) return { valid: false };
   return {
     valid: true,
     local: `0${match[1]}-${match[2]}`,
-    e164: `+92${match[1]}${match[2]}`
+    e164: `+92${match[1]}${match[2]}`,
+    waId: `92${match[1]}${match[2]}`
   };
 }
 
