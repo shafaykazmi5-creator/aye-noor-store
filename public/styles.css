@@ -495,3 +495,9 @@ button { cursor: pointer; }
   .footer-grid { grid-template-columns: 1fr; gap: 26px; }
   .contact-form-card { padding: 22px 18px; }
 }
+
+/* ---------- Fix pack: equal-height product cards (Add to Cart buttons line up) ---------- */
+.product-card { display: flex; flex-direction: column; }
+.product-info { display: flex; flex-direction: column; flex: 1; }
+.product-info .price-row { margin-bottom: 14px; }
+.product-info .add-button { margin-top: auto; }

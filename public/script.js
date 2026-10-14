@@ -228,6 +228,10 @@
   const productGrid = $("productGrid");
   const initialCards = productGrid ? [...productGrid.querySelectorAll(".product-card")] : [];
 
+  // On the /shop page the SERVER does the filtering and searching (so every collection stays reachable).
+  // On the home page all cards are already shown, so the browser filters them instantly.
+  const serverFiltered = Boolean($("shopFilterForm"));
+
   function filterAndSortCards() {
     if (!productGrid) return;
     const searchInput = $("searchInput");
@@ -310,12 +314,12 @@
   searchInputs.forEach(input => {
     input.addEventListener("input", () => {
       searchInputs.forEach(other => { if (other !== input) other.value = input.value; });
-      if (productGrid) filterAndSortCards();
+      if (productGrid && !serverFiltered) filterAndSortCards();
     });
     const form = input.closest("form");
     if (form) {
       form.addEventListener("submit", event => {
-        if (productGrid && $("shop")) {
+        if (productGrid && $("shop") && !serverFiltered) {
           event.preventDefault();
           setMenu(false);
           filterAndSortCards();
@@ -428,8 +432,12 @@
     });
   }
 
-  if ($("categoryFilter")) $("categoryFilter").addEventListener("change", filterAndSortCards);
-  if ($("sortSelect")) $("sortSelect").addEventListener("change", filterAndSortCards);
+  const onFilterChange = () => {
+    if (serverFiltered) $("shopFilterForm").requestSubmit();
+    else filterAndSortCards();
+  };
+  if ($("categoryFilter")) $("categoryFilter").addEventListener("change", onFilterChange);
+  if ($("sortSelect")) $("sortSelect").addEventListener("change", onFilterChange);
   if ($("clearCartBtn")) $("clearCartBtn").addEventListener("click", clearCart);
 
   $("menuButton").addEventListener("click", () => setMenu(!isMenuOpen()));

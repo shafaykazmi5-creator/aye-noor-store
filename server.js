@@ -18,15 +18,22 @@ const PORT = process.env.PORT || 3000;
 
 // In-memory log of contact messages during development (moves to PostgreSQL in Step 8)
 const devContactMessages = [];
+const MAX_DEV_MESSAGES = 200;      // keep memory bounded while testing
+let contactCounter = 1000;
+const CONTACT_TOPICS = ["General Inquiry", "Order Question", "Gifting / Bulk Order", "Custom Candle Request"];
+
+// Replace line breaks and other control characters so visitor text can't fake extra lines in logs
+const cleanLine = value => value.replace(/[\u0000-\u001F\u007F]+/g, " ").trim();
 
 app.disable("x-powered-by");
 
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 
-app.use(express.json({ limit: "16kb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
+// Template helpers. This must run BEFORE express.json(), so that even the error page
+// (shown when a request is rejected early) has everything it needs to render.
 app.use((req, res, next) => {
   res.locals.formatMoney = formatMoney;
   res.locals.storeConfig = STORE_CONFIG;
@@ -34,6 +41,8 @@ app.use((req, res, next) => {
   res.locals.searchQuery = typeof req.query.q === "string" ? req.query.q.trim() : "";
   next();
 });
+
+app.use(express.json({ limit: "16kb" }));
 
 app.get("/", (req, res) => {
   const products = getActiveProducts();
@@ -173,9 +182,9 @@ app.post("/api/cart/quote", (req, res) => {
 // Server-validated Contact Inquiry API (development mode)
 app.post("/api/contact", (req, res) => {
   const body = req.body || {};
-  const name = typeof body.name === "string" ? body.name.trim() : "";
-  const phoneOrEmail = typeof body.contact === "string" ? body.contact.trim() : "";
-  const topic = typeof body.topic === "string" ? body.topic.trim() : "General Inquiry";
+  const name = typeof body.name === "string" ? cleanLine(body.name) : "";
+  const phoneOrEmail = typeof body.contact === "string" ? cleanLine(body.contact) : "";
+  const topic = CONTACT_TOPICS.includes(body.topic) ? body.topic : "General Inquiry";
   const message = typeof body.message === "string" ? body.message.trim() : "";
 
   if (name.length < 2 || name.length > 80) {
@@ -188,8 +197,9 @@ app.post("/api/contact", (req, res) => {
     return res.status(400).json({ error: "Please enter a message between 10 and 1,500 characters." });
   }
 
+  contactCounter += 1;
   const record = {
-    id: `MSG-${1000 + devContactMessages.length + 1}`,
+    id: `MSG-${contactCounter}`,
     name,
     contact: phoneOrEmail,
     topic,
@@ -197,7 +207,8 @@ app.post("/api/contact", (req, res) => {
     createdAt: new Date().toISOString()
   };
   devContactMessages.push(record);
-  console.log(`[Contact Inquiry ${record.id}] From: ${record.name} (${record.contact}) | Topic: ${record.topic}`);
+  if (devContactMessages.length > MAX_DEV_MESSAGES) devContactMessages.shift();
+  console.log(`[Contact Inquiry ${record.id}] From: ${JSON.stringify(record.name)} (${JSON.stringify(record.contact)}) | Topic: ${record.topic}`);
 
   res.json({
     ok: true,
@@ -222,6 +233,14 @@ app.use((req, res) => {
 
 app.use((err, req, res, next) => {
   console.error(err);
+  if (res.headersSent) return next(err);
+
+  // Broken or oversized data sent to an API address: answer with a short JSON message, not a web page
+  if (req.path.startsWith("/api/")) {
+    const status = err.status >= 400 && err.status < 500 ? err.status : 500;
+    return res.status(status).json({ error: status === 500 ? "Something went wrong." : "The request could not be read." });
+  }
+
   res.status(500).render("status", {
     pageTitle: "Something Went Wrong — Aye Noor",
     pageDescription: "An unexpected error occurred.",
