@@ -4,6 +4,7 @@ const path = require("path");
 const crypto = require("crypto");
 const express = require("express");
 const multer = require("multer");
+const { syncPostgresToExcel, EXCEL_PATH } = require("./excel-sync");
 
 const ALLOWED_ORDER_STATUSES = ["Pending", "Confirmed", "Dispatched", "Delivered", "Cancelled"];
 const ALLOWED_PRODUCT_STATUSES = ["Active", "Draft", "Out of Stock", "Discontinued"];
@@ -483,6 +484,7 @@ function registerAdminRoutes(app, { db, forceSyncNow, processOutboxBatch }) {
 
       await client.query("COMMIT");
       await forceSyncNow();
+      await syncPostgresToExcel(db).catch(e => console.warn("⚠️ Excel sync warning:", e.message));
       if (newStatus === "Dispatched") setImmediate(() => processOutboxBatch());
       return res.redirect(`${secretPath}?tab=orders&msg=${encodeURIComponent(`Order ${orderNumber} updated to ${newStatus}`)}`);
     } catch (err) {
@@ -552,6 +554,7 @@ function registerAdminRoutes(app, { db, forceSyncNow, processOutboxBatch }) {
       );
 
       await forceSyncNow();
+      await syncPostgresToExcel(db).catch(e => console.warn("⚠️ Excel sync warning:", e.message));
       return res.redirect(`${secretPath}?tab=products&msg=${encodeURIComponent(`Added new product ${sku} (${name})`)}`);
     } catch (err) {
       return res.redirect(`${secretPath}?tab=products&err=${encodeURIComponent(err.message)}`);
@@ -610,6 +613,7 @@ function registerAdminRoutes(app, { db, forceSyncNow, processOutboxBatch }) {
       );
 
       await forceSyncNow();
+      await syncPostgresToExcel(db).catch(e => console.warn("⚠️ Excel sync warning:", e.message));
       return res.redirect(`${secretPath}?tab=products&msg=${encodeURIComponent(`Updated product ${sku} (${name})`)}`);
     } catch (err) {
       return res.redirect(`${secretPath}?tab=products&err=${encodeURIComponent(err.message)}`);
@@ -622,6 +626,7 @@ function registerAdminRoutes(app, { db, forceSyncNow, processOutboxBatch }) {
     try {
       await db.query("DELETE FROM products WHERE sku = $1", [sku]);
       await forceSyncNow();
+      await syncPostgresToExcel(db).catch(e => console.warn("⚠️ Excel sync warning:", e.message));
       return res.redirect(`${secretPath}?tab=products&msg=${encodeURIComponent(`Removed product ${sku}`)}`);
     } catch (err) {
       return res.redirect(`${secretPath}?tab=products&err=${encodeURIComponent(err.message)}`);
@@ -645,6 +650,7 @@ function registerAdminRoutes(app, { db, forceSyncNow, processOutboxBatch }) {
           await db.query("UPDATE products SET sale_price = price WHERE price > 0 AND category = $1", [targetCategory]);
         }
         await forceSyncNow();
+      await syncPostgresToExcel(db).catch(e => console.warn("⚠️ Excel sync warning:", e.message));
         return res.redirect(`${secretPath}?tab=products&msg=Reset+all+product+discounts+back+to+regular+price`);
       }
 
@@ -658,6 +664,7 @@ function registerAdminRoutes(app, { db, forceSyncNow, processOutboxBatch }) {
         );
       }
       await forceSyncNow();
+      await syncPostgresToExcel(db).catch(e => console.warn("⚠️ Excel sync warning:", e.message));
       return res.redirect(`${secretPath}?tab=products&msg=${encodeURIComponent(`Applied ${percent}\% discount to${targetCategory === "ALL" ? "all products" : targetCategory}`)}`);
     } catch (err) {
       return res.redirect(`${secretPath}?tab=products&err=${encodeURIComponent(err.message)}`);
@@ -721,6 +728,16 @@ function registerAdminRoutes(app, { db, forceSyncNow, processOutboxBatch }) {
       return res.redirect(`${secretPath}?tab=vouchers&msg=${encodeURIComponent(`Deleted voucher ${code}`)}`);
     } catch (err) {
       return res.redirect(`${secretPath}?tab=vouchers&err=${encodeURIComponent(err.message)}`);
+    }
+  });
+
+  
+  router.get("/products/export-excel", async (_req, res) => {
+    try {
+      await syncPostgresToExcel(db);
+      return res.download(EXCEL_PATH, "Aye_Noor_Product_Catalog.xlsx");
+    } catch (err) {
+      return res.redirect(`${secretPath}?tab=products&err=${encodeURIComponent(err.message)}`);
     }
   });
 

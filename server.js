@@ -455,6 +455,9 @@ app.get("/health", async (req, res) => {
   }
 });
 
+const { registerStep14Routes } = require("./db/security-and-status");
+registerStep14Routes(app, { db });
+
 const { registerAdminRoutes, applyVoucherInTransaction } = require("./db/admin");
 registerAdminRoutes(app, { db, forceSyncNow, processOutboxBatch });
 
