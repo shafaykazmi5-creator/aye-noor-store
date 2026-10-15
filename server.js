@@ -1,7 +1,11 @@
-﻿"use strict";
+"use strict";
 
 const path = require("path");
 const express = require("express");
+const db = require("./db");
+const { forceSyncNow } = require("./db/sync-products");
+const { enqueueOrderNotifications, processOutboxBatch, startOutboxWorker } = require("./db/outbox");
+startOutboxWorker();
 const STORE_CONFIG = require("./data/config");
 const { FAQS, POLICIES } = require("./data/pages");
 const {
@@ -200,18 +204,10 @@ app.post("/api/cart/quote", (req, res) => {
   res.json(quote);
 });
 
-// Server-validated Checkout Preview API (Step 7)
-app.post("/api/checkout/preview", (req, res) => {
+// Step 10 (Hardened): Authoritative PostgreSQL Order Creation, Idempotency & Stock Deduction
+app.post("/api/checkout", async (req, res) => {
   const body = req.body || {};
   const rawItems = Array.isArray(body.items) ? body.items : [];
-  const quote = buildCartQuote(rawItems);
-
-  if (quote.itemCount === 0) {
-    return res.status(400).json({
-      error: "Your cart is empty or the selected items are no longer available.",
-      field: "cart"
-    });
-  }
 
   const fullName = typeof body.fullName === "string" ? cleanLine(body.fullName) : "";
   const rawPhone = typeof body.phone === "string" ? cleanLine(body.phone) : "";
@@ -222,117 +218,245 @@ app.post("/api/checkout/preview", (req, res) => {
   const province = typeof body.province === "string" ? cleanLine(body.province) : "";
   const notes = typeof body.notes === "string" ? cleanLine(body.notes) : "";
   const paymentMethod = typeof body.paymentMethod === "string" ? cleanLine(body.paymentMethod) : "cod";
-  const whatsappOptIn = Boolean(body.whatsappOptIn);
+  const idempotencyKey = typeof body.idempotencyKey === "string" ? cleanLine(body.idempotencyKey).slice(0, 95) : "";
 
-  if (fullName.length < 2 || fullName.length > 80) {
-    return res.status(400).json({ error: "Please enter the recipient's full name (2–80 characters).", field: "fullName" });
-  }
+  const whatsappOptIn = true;
 
+  if (fullName.length < 2 || fullName.length > 80) return res.status(400).json({ error: "Please enter the recipient's full name (2–80 characters).", field: "fullName" });
   const parsedPhone = parsePakistaniMobile(rawPhone);
-  if (!parsedPhone.valid) {
-    return res.status(400).json({
-      error: "Please enter a valid Pakistani mobile number (e.g. 0300-1234567 or +92 300 1234567).",
-      field: "phone"
-    });
-  }
-
-  if (email && (email.length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
-    return res.status(400).json({ error: "Please enter a valid email address or leave it blank.", field: "email" });
-  }
-
-  if (address.length < 6 || address.length > 220) {
-    return res.status(400).json({ error: "Please enter a complete house/street delivery address (at least 6 characters).", field: "address" });
-  }
-
-  if (area.length > 100) {
-    return res.status(400).json({ error: "Area / sector / landmark must be under 100 characters.", field: "area" });
-  }
-
-  if (city.length < 2 || city.length > 60) {
-    return res.status(400).json({ error: "Please enter your delivery city.", field: "city" });
-  }
-
-  if (!STORE_CONFIG.provinces.includes(province)) {
-    return res.status(400).json({ error: "Please select a valid province or territory.", field: "province" });
-  }
-
-  if (notes.length > 500) {
-    return res.status(400).json({ error: "Order / gift notes must be under 500 characters.", field: "notes" });
-  }
+  if (!parsedPhone.valid) return res.status(400).json({ error: "Please enter a valid Pakistani mobile number (e.g. 0300-1234567).", field: "phone" });
+  if (email && (email.length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) return res.status(400).json({ error: "Please enter a valid email address or leave it blank.", field: "email" });
+  if (address.length < 6 || address.length > 220) return res.status(400).json({ error: "Please enter a complete delivery address (at least 6 characters).", field: "address" });
+  if (area.length > 100) return res.status(400).json({ error: "Area / landmark must be under 100 characters.", field: "area" });
+  if (city.length < 2 || city.length > 60) return res.status(400).json({ error: "Please enter your delivery city.", field: "city" });
+  if (!STORE_CONFIG.provinces.includes(province)) return res.status(400).json({ error: "Please select a valid province.", field: "province" });
+  if (notes.length > 500) return res.status(400).json({ error: "Order notes must be under 500 characters.", field: "notes" });
 
   const allowedPayment = STORE_CONFIG.paymentMethods.find(m => m.id === paymentMethod && m.enabled);
-  if (!allowedPayment) {
-    return res.status(400).json({ error: "Please select an available payment method (Cash on Delivery).", field: "paymentMethod" });
+  if (!allowedPayment) return res.status(400).json({ error: "Please select an available payment method.", field: "paymentMethod" });
+
+  const requestedMap = new Map();
+  for (const entry of rawItems.slice(0, 50)) {
+    if (!entry || typeof entry.sku !== "string") continue;
+    const sku = entry.sku.trim();
+    const qty = Math.floor(Number(entry.qty));
+    if (sku && Number.isInteger(qty) && qty > 0) {
+      requestedMap.set(sku, (requestedMap.get(sku) || 0) + qty);
+    }
   }
 
-  checkoutPreviewCounter += 1;
-  const previewNumber = `PREVIEW-${checkoutPreviewCounter}`;
+  if (requestedMap.size === 0) {
+    return res.status(400).json({ error: "Your cart is empty.", field: "cart" });
+  }
 
-  console.log(
-    `[Checkout Validated ${previewNumber}] Customer: ${JSON.stringify(fullName)} | Phone: ${parsedPhone.e164} | City: ${JSON.stringify(city)}, ${province} | Items: ${quote.itemCount} | Total: ${formatMoney(quote.total)}`
-  );
+  const client = await db.pool.connect();
+  try {
+    await client.query("BEGIN");
 
-  res.json({
-    ok: true,
-    previewNumber,
-    customer: {
-      fullName,
-      phoneLocal: parsedPhone.local,
-      phoneE164: parsedPhone.e164,
-      email: email || null,
-      address,
-      area: area || null,
-      city,
-      province,
-      notes: notes || null,
-      paymentMethod: allowedPayment.label,
-      whatsappOptIn
-    },
-    quote
-  });
+    // 1. Check idempotency key to prevent duplicate orders on retry
+    if (idempotencyKey) {
+      const existingOrder = await client.query(
+        "SELECT order_number, subtotal, shipping_fee, total FROM orders WHERE idempotency_key = $1",
+        [idempotencyKey]
+      );
+      if (existingOrder.rows.length > 0) {
+        await client.query("ROLLBACK");
+        const ord = existingOrder.rows[0];
+        const existingItems = await db.query(
+          "SELECT sku, product_name AS name, unit_price AS \"salePrice\", quantity AS qty, line_total AS \"lineTotal\" FROM order_items WHERE order_number = $1",
+          [ord.order_number]
+        );
+        return res.json({
+          ok: true,
+          duplicate: true,
+          orderNumber: ord.order_number,
+          customer: {
+            fullName, phoneLocal: parsedPhone.local, phoneE164: parsedPhone.e164,
+            email: email || null, address, area: area || null, city, province,
+            notes: notes || null, paymentMethod: allowedPayment.label, whatsappOptIn
+          },
+          quote: {
+            items: existingItems.rows.map(r => ({
+              sku: r.sku, name: r.name, salePrice: Number(r.salePrice),
+              qty: Number(r.qty), lineTotal: Number(r.lineTotal)
+            })),
+            itemCount: existingItems.rows.reduce((sum, r) => sum + Number(r.qty), 0),
+            subtotal: Number(ord.subtotal),
+            shippingFee: Number(ord.shipping_fee),
+            total: Number(ord.total)
+          }
+        });
+      }
+    }
+
+    // 2. Lock product rows & calculate authoritative prices directly from PostgreSQL
+    const skus = [...requestedMap.keys()];
+    const lockRes = await client.query(
+      "SELECT sku, slug, name, category, price, sale_price, stock, status FROM products WHERE sku = ANY($1) FOR UPDATE",
+      [skus]
+    );
+    const dbProducts = new Map(lockRes.rows.map(r => [r.sku, r]));
+
+    const verifiedItems = [];
+    let itemCount = 0;
+    let subtotal = 0;
+    let regularSubtotal = 0;
+
+    for (const [sku, reqQty] of requestedMap.entries()) {
+      const p = dbProducts.get(sku);
+      if (!p || p.status !== "Active") {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: `Item "${sku}" is no longer available.`, field: "cart" });
+      }
+      const price = Number(p.price);
+      const salePrice = Number(p.sale_price);
+      const stock = Number(p.stock);
+
+      if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(salePrice) || salePrice <= 0) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: `Item "${p.name}" has an invalid price configuration.`, field: "cart" });
+      }
+      if (stock < reqQty) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({
+          error: stock < 1
+            ? `Sorry, "${p.name}" is out of stock.`
+            : `Only ${stock} unit(s) of "${p.name}" remain in stock.`,
+          field: "cart"
+        });
+      }
+
+      const lineTotal = salePrice * reqQty;
+      const regularLineTotal = price * reqQty;
+      itemCount += reqQty;
+      subtotal += lineTotal;
+      regularSubtotal += regularLineTotal;
+
+      verifiedItems.push({
+        sku: p.sku, slug: p.slug, name: p.name, category: p.category,
+        price, salePrice, qty: reqQty, lineTotal, regularLineTotal
+      });
+    }
+
+    const threshold = STORE_CONFIG.freeShippingThreshold;
+    const shippingFee = subtotal >= threshold ? 0 : STORE_CONFIG.shippingFee;
+    const savings = Math.max(0, regularSubtotal - subtotal);
+    let total = subtotal + shippingFee;
+
+    // 3. Generate collision-free order number via PostgreSQL sequence
+    const seqRes = await client.query("SELECT nextval('order_number_seq') AS seq");
+    const seqNum = String(seqRes.rows[0].seq).padStart(4, "0");
+    const now = new Date();
+    const datePart = `${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+    const orderNumber = `AN-${datePart}-${seqNum}`;
+
+    // 4. Insert order & items and deduct stock atomically
+    await client.query(
+      `INSERT INTO orders (
+        order_number, customer_name, phone_e164, email, address, area, city, province,
+        notes, payment_method, subtotal, shipping_fee, total, status,
+        whatsapp_opt_in, whatsapp_consent_at, idempotency_key
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'Pending',$14, CASE WHEN $14 THEN CURRENT_TIMESTAMP ELSE NULL END, $15)`,
+      [
+        orderNumber, fullName, parsedPhone.e164, email || null,
+        address, area || null, city, province, notes || null,
+        allowedPayment.label, subtotal, shippingFee, total,
+        whatsappOptIn, idempotencyKey || null
+      ]
+    );
+
+    for (const item of verifiedItems) {
+      await client.query(
+        "INSERT INTO order_items (order_number, sku, product_name, unit_price, quantity, line_total) VALUES ($1,$2,$3,$4,$5,$6)",
+        [orderNumber, item.sku, item.name, item.salePrice, item.qty, item.lineTotal]
+      );
+      await client.query("UPDATE products SET stock = stock - $1 WHERE sku = $2", [item.qty, item.sku]);
+    }
+
+    let voucherCode = null;
+    let discountAmount = 0;
+    if (body && body.voucherCode) {
+      const vApplied = await applyVoucherInTransaction(client, body.voucherCode, subtotal);
+      if (vApplied) {
+        voucherCode = vApplied.code;
+        discountAmount = vApplied.discountAmount;
+        total = Math.max(0, subtotal - discountAmount + shippingFee);
+        await client.query(
+          "UPDATE orders SET voucher_code = $1, discount_amount = $2, total = $3 WHERE order_number = $4",
+          [voucherCode, discountAmount, total, orderNumber]
+        );
+      }
+    }
+    await client.query("COMMIT");
+    await forceSyncNow(); try { await enqueueOrderNotifications({ orderNumber, customerName: fullName, phoneLocal: parsedPhone.local, phoneE164: parsedPhone.e164, address, area: area || null, city, province, notes: notes || null, paymentMethod: allowedPayment.label, subtotal, shippingFee, total, items: verifiedItems, voucherCode, discountAmount }); setImmediate(() => processOutboxBatch()); } catch (e) { console.warn("Outbox err:", e.message); }
+
+    // Minimal operational log without customer PII
+    console.log(`✓ [Order Created] order=${orderNumber} items=${itemCount} total=${formatMoney(total)} waOptIn=${whatsappOptIn}`);
+
+    res.json({
+      ok: true,
+      orderNumber,
+      customer: {
+        fullName, phoneLocal: parsedPhone.local, phoneE164: parsedPhone.e164,
+        email: email || null, address, area: area || null, city, province,
+        notes: notes || null, paymentMethod: allowedPayment.label, whatsappOptIn
+      },
+      quote: {
+        items: verifiedItems, voucherCode, discountAmount,
+        itemCount,
+        subtotal,
+        regularSubtotal,
+        savings,
+        shippingFee,
+        freeShippingThreshold: threshold,
+        total
+      }
+    });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("❌ Order transaction error:", err.message);
+    res.status(500).json({ error: "Could not place your order right now. Please try again." });
+  } finally {
+    client.release();
+  }
 });
 
-// Server-validated Contact Inquiry API (development mode)
-app.post("/api/contact", (req, res) => {
+app.post("/api/contact", async (req, res) => {
   const body = req.body || {};
   const name = typeof body.name === "string" ? cleanLine(body.name) : "";
   const phoneOrEmail = typeof body.contact === "string" ? cleanLine(body.contact) : "";
   const topic = CONTACT_TOPICS.includes(body.topic) ? body.topic : "General Inquiry";
   const message = typeof body.message === "string" ? body.message.trim() : "";
 
-  if (name.length < 2 || name.length > 80) {
-    return res.status(400).json({ error: "Please enter your name (2–80 characters)." });
-  }
-  if (phoneOrEmail.length < 5 || phoneOrEmail.length > 100) {
-    return res.status(400).json({ error: "Please provide a valid phone number or email address." });
-  }
-  if (message.length < 10 || message.length > 1500) {
-    return res.status(400).json({ error: "Please enter a message between 10 and 1,500 characters." });
-  }
+  if (name.length < 2 || name.length > 80) return res.status(400).json({ error: "Please enter your name (2–80 characters)." });
+  if (phoneOrEmail.length < 5 || phoneOrEmail.length > 100) return res.status(400).json({ error: "Please provide a valid phone number or email address." });
+  if (message.length < 10 || message.length > 1500) return res.status(400).json({ error: "Please enter a message between 10 and 1,500 characters." });
 
-  contactCounter += 1;
-  const record = {
-    id: `MSG-${contactCounter}`,
-    name,
-    contact: phoneOrEmail,
-    topic,
-    message,
-    createdAt: new Date().toISOString()
-  };
-  devContactMessages.push(record);
-  if (devContactMessages.length > MAX_DEV_MESSAGES) devContactMessages.shift();
-  console.log(`[Contact Inquiry ${record.id}] From: ${JSON.stringify(record.name)} (${JSON.stringify(record.contact)}) | Topic: ${record.topic}`);
-
-  res.json({
-    ok: true,
-    reference: record.id,
-    message: `Thank you, ${name}. Your inquiry (${record.id}) has been recorded in development mode.`
-  });
+  const refId = `MSG-${Date.now().toString(36).toUpperCase().slice(-5)}-${Math.floor(100 + Math.random() * 900)}`;
+  try {
+    await db.query(
+      "INSERT INTO contact_messages (reference_id, name, contact, topic, message) VALUES ($1,$2,$3,$4,$5)",
+      [refId, name, phoneOrEmail, topic, message]
+    );
+    console.log(`✓ [Contact Saved] ref=${refId} topic=${JSON.stringify(topic)}`);
+    res.json({ ok: true, reference: refId, message: `Thank you, ${name}. Your inquiry (${refId}) has been received.` });
+  } catch (err) {
+    console.error("❌ Contact DB error:", err.message);
+    res.status(500).json({ error: "Could not save your message right now." });
+  }
 });
 
-app.get("/health", (req, res) => {
-  res.json({ status: "ok" });
+app.get("/health", async (req, res) => {
+  try {
+    await db.query("SELECT 1");
+    res.json({ status: "ok", db: "connected" });
+  } catch {
+    res.status(503).json({ status: "error", db: "disconnected" });
+  }
 });
+
+const { registerAdminRoutes, applyVoucherInTransaction } = require("./db/admin");
+registerAdminRoutes(app, { db, forceSyncNow, processOutboxBatch });
 
 app.use((req, res) => {
   res.status(404).render("status", {

@@ -51,11 +51,7 @@
           <label for="checkoutEmail">Email address <span class="optional-tag">(optional)</span></label>
           <input id="checkoutEmail" name="email" type="email" maxlength="120" autocomplete="email" placeholder="you@example.com">
         </div>
-
-        <label class="checkbox-row" for="checkoutWhatsappOptIn">
-          <input id="checkoutWhatsappOptIn" name="whatsappOptIn" type="checkbox" checked>
-          <span>Send automatic order confirmation and status updates to my WhatsApp number.</span>
-        </label>
+        <p class="field-hint" style="margin-top:0.5rem;">✦ We will send an automated WhatsApp message to your number—simply reply <strong>CONFIRM</strong> on WhatsApp to finalize your order.</p>
       </fieldset>
 
       <fieldset class="checkout-fieldset">
@@ -122,8 +118,9 @@
 
       <div class="checkout-preview-result hidden" id="checkoutPreviewBox" aria-live="polite"></div>
 
-      <button class="dark-button full-button checkout-submit-btn" id="checkoutSubmitBtn" type="submit">
-        Verify &amp; Preview Order <span aria-hidden="true">↗</span>
+      <div class="voucher-box" style="margin:1.1rem 0;padding:1rem;border:1px dashed #bfa992;border-radius:10px;background:#fdfaf6;"><label for="voucherCodeInput" style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:0.45rem;">Have a Discount Voucher?</label><div style="display:flex;gap:0.5rem;"><input id="voucherCodeInput" type="text" placeholder="Enter voucher code (e.g. AYENOOR10)" style="flex:1;text-transform:uppercase;padding:0.55rem;border:1px solid #d8cbb8;border-radius:6px;"><button type="button" id="applyVoucherBtn" class="button" style="white-space:nowrap;padding:0.55rem 1rem;background:#1e1916;color:#fff;border:none;border-radius:6px;cursor:pointer;">Apply Code</button></div><p id="voucherStatusMsg" style="margin:0.5rem 0 0;font-size:0.83rem;display:none;"></p></div><script>(function(){window.__appliedVoucherCode=null;const origFetch=window.fetch;window.fetch=function(u,o){if(typeof u==="string"&&u.includes("/api/checkout")&&o&&o.body){try{const d=JSON.parse(o.body);if(window.__appliedVoucherCode)d.voucherCode=window.__appliedVoucherCode;o.body=JSON.stringify(d);}catch(e){}}return origFetch.apply(this,arguments);};document.addEventListener("DOMContentLoaded",function(){const b=document.getElementById("applyVoucherBtn"),i=document.getElementById("voucherCodeInput"),m=document.getElementById("voucherStatusMsg");if(!b||!i)return;b.addEventListener("click",async function(){const code=i.value.trim().toUpperCase();if(!code)return;let sub=0;document.querySelectorAll("*").forEach(el=>{if(/^Items\s*\(\d+\)$/i.test((el.textContent||"").trim())&&el.nextElementSibling){sub=Number(el.nextElementSibling.textContent.replace(/[^\d]/g,""))||sub;}});if(!sub){try{Object.values(localStorage).forEach(v=>{if(v.includes("sku")){const arr=JSON.parse(v);if(Array.isArray(arr))sub=arr.reduce((s,x)=>s+(Number(x.salePrice||x.price||0)*Number(x.qty||x.quantity||1)),0);}});}catch(e){}}const r=await fetch("/api/voucher/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code,subtotal:sub||1000})});const out=await r.json();m.style.display="block";if(out.ok){window.__appliedVoucherCode=out.code;m.style.color="#18633b";m.textContent="✓ "+out.message;document.querySelectorAll("*").forEach(el=>{if(/^Total payable$/i.test((el.textContent||"").trim())&&el.nextElementSibling&&sub>0){const ship=sub>=3000?0:250;el.nextElementSibling.textContent="Rs. "+Math.max(0,sub-out.discountAmount+ship).toLocaleString("en-PK")+" (-Rs. "+out.discountAmount.toLocaleString("en-PK")+" voucher)";}});}else{window.__appliedVoucherCode=null;m.style.color="#991b1b";m.textContent="⚠️ "+(out.message||"Invalid voucher");}});});})();</script>
+        <button class="dark-button full-button checkout-submit-btn" id="checkoutSubmitBtn" type="submit">
+        Place Order (Cash on Delivery) <span aria-hidden="true">↗</span>
       </button>
     </form>
 

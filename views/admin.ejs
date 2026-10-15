@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aye Noor — Secret Admin Vault</title>
+  <style>
+    :root {
+      --bg: #f8f4ee;
+      --card: #ffffff;
+      --ink: #1e1916;
+      --muted: #6e6259;
+      --line: #e5dcd1;
+      --accent: #8c5a3c;
+      --green: #18633b;
+      --green-bg: #e7f6ed;
+      --amber: #925609;
+      --amber-bg: #fef4e5;
+      --blue: #1e40af;
+      --blue-bg: #eff6ff;
+      --red: #991b1b;
+      --red-bg: #fef2f2;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--ink); line-height: 1.45; }
+    .topbar { background: var(--ink); color: #fff; padding: 0.9rem 1.75rem; display: flex; justify-content: space-between; align-items: center; }
+    .topbar a { color: #f3e9df; text-decoration: none; font-size: 0.88rem; margin-right: 1rem; }
+    .container { max-width: 1380px; margin: 0 auto; padding: 1.4rem; }
+    .banner { padding: 0.85rem 1.1rem; border-radius: 8px; margin-bottom: 1.2rem; font-weight: 500; }
+    .banner.ok { background: var(--green-bg); color: var(--green); border: 1px solid #b5e1c7; }
+    .banner.err { background: var(--red-bg); color: var(--red); border: 1px solid #f5c2c2; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); gap: 0.9rem; margin-bottom: 1.4rem; }
+    .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 0.95rem 1.1rem; }
+    .kpi span { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); display: block; }
+    .kpi strong { font-size: 1.45rem; display: block; margin-top: 0.2rem; }
+    .tabs { display: flex; gap: 0.5rem; margin-bottom: 1.25rem; flex-wrap: wrap; border-bottom: 2px solid var(--line); padding-bottom: 0.6rem; }
+    .tab-link { padding: 0.55rem 1.1rem; border-radius: 8px; text-decoration: none; color: var(--ink); font-weight: 600; font-size: 0.9rem; background: var(--card); border: 1px solid var(--line); }
+    .tab-link.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 1.25rem; margin-bottom: 1.5rem; overflow-x: auto; }
+    .card-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; }
+    .card-head h2, .card-head h3 { margin: 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+    th, td { text-align: left; padding: 0.7rem 0.6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); background: #fcfaf7; }
+    .badge { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 999px; font-size: 0.74rem; font-weight: 600; }
+    .badge.Pending, .badge.pending, .badge.Draft { background: var(--amber-bg); color: var(--amber); }
+    .badge.Confirmed, .badge.Delivered, .badge.sent, .badge.Active { background: var(--green-bg); color: var(--green); }
+    .badge.Dispatched { background: var(--blue-bg); color: var(--blue); }
+    .badge.Cancelled, .badge.failed, .badge.Discontinued { background: var(--red-bg); color: var(--red); }
+    input[type="text"], input[type="number"], input[type="password"], input[type="date"], select, textarea {
+      width: 100%; padding: 0.48rem 0.6rem; border: 1px solid var(--line); border-radius: 6px; font-size: 0.86rem; background: #fff; font-family: inherit;
+    }
+    label.field { display: flex; flex-direction: column; gap: 0.28rem; font-size: 0.8rem; font-weight: 600; color: var(--muted); }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0.85rem; }
+    button, .btn { padding: 0.48rem 0.9rem; border-radius: 6px; border: none; background: var(--ink); color: #fff; font-size: 0.84rem; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block; }
+    button:hover, .btn:hover { background: var(--accent); }
+    .btn-danger { background: var(--red); }
+    .btn-ghost { background: transparent; border: 1px solid var(--line); color: var(--ink); }
+    .filter-pill { padding: 0.32rem 0.75rem; border-radius: 999px; font-size: 0.8rem; text-decoration: none; border: 1px solid var(--line); color: var(--ink); background: var(--bg); }
+    .filter-pill.active { background: var(--ink); color: #fff; }
+    .thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); }
+    details.editor-box { background: #fdfbf8; border: 1px solid var(--line); border-radius: 8px; padding: 0.75rem; margin-top: 0.5rem; }
+    details.editor-box summary { cursor: pointer; font-weight: 600; color: var(--accent); font-size: 0.84rem; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div><strong>AYE NOOR</strong> &nbsp;|&nbsp; Secret Admin Vault (<code><%= secretPath %></code>)</div>
+    <div>
+      <a href="/" target="_blank">View Storefront ↗</a>
+      <% if (viewMode === "dashboard") { %>
+        <form action="<%= secretPath %>/logout" method="POST" style="display:inline;">
+          <button type="submit" class="btn-ghost" style="color:#fff;border-color:#555;">Lock Vault</button>
+        </form>
+      <% } %>
+    </div>
+  </header>
+
+  <main class="container">
+    <% if (viewMode === "login") { %>
+      <div class="card" style="max-width:410px;margin:5rem auto;">
+        <h2 style="margin-top:0;">🔒 Aye Noor Secret Vault</h2>
+        <p style="color:var(--muted);font-size:0.88rem;">This URL is hidden from the public. Enter your <code>ADMIN_PASSWORD</code> to unlock.</p>
+        <% if (error) { %><div class="banner err"><%= error %></div><% } %>
+        <form action="<%= secretPath %>/login" method="POST" style="display:grid;gap:0.85rem;">
+          <input type="password" name="password" placeholder="Admin Password" required autofocus>
+          <button type="submit">Unlock Admin Panel →</button>
+        </form>
+      </div>
+    <% } else { %>
+
+      <% if (msg) { %><div class="banner ok">✓ <%= msg %></div><% } %>
+      <% if (err) { %><div class="banner err">⚠️ <%= err %></div><% } %>
+
+      <section class="kpi-grid">
+        <div class="kpi">
+          <span>Active COD Revenue</span>
+          <strong>Rs. <%= Number(stats.activeRevenue).toLocaleString("en-PK") %></strong>
+        </div>
+        <div class="kpi">
+          <span>Awaiting WhatsApp CONFIRM</span>
+          <strong><%= stats.pendingCount %></strong>
+        </div>
+        <div class="kpi">
+          <span>Confirmed (Ready to Ship)</span>
+          <strong><%= stats.confirmedCount %></strong>
+        </div>
+        <div class="kpi">
+          <span>Dispatched / Delivered</span>
+          <strong><%= stats.dispatchedCount %> / <%= stats.deliveredCount %></strong>
+        </div>
+        <div class="kpi">
+          <span>Catalog Items / Vouchers</span>
+          <strong><%= stats.totalProducts %> / <%= stats.activeVouchers %> active</strong>
+        </div>
+      </section>
+
+      <nav class="tabs">
+        <a class="tab-link <%= activeTab === 'orders' ? 'active' : '' %>" href="<%= secretPath %>?tab=orders">1. Orders & WhatsApp (<%= orders.length %>)</a>
+        <a class="tab-link <%= activeTab === 'products' ? 'active' : '' %>" href="<%= secretPath %>?tab=products">2. Products & Discounts (<%= products.length %>)</a>
+        <a class="tab-link <%= activeTab === 'vouchers' ? 'active' : '' %>" href="<%= secretPath %>?tab=vouchers">3. Discount Vouchers (<%= vouchers.length %>)</a>
+        <a class="tab-link <%= activeTab === 'contacts' ? 'active' : '' %>" href="<%= secretPath %>?tab=contacts">4. Contact Messages (<%= contacts.length %>)</a>
+      </nav>
+
+      <% if (activeTab === "orders") { %>
+        <section class="card">
+          <div class="card-head">
+            <h2>Orders Management</h2>
+            <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+              <% ["All", ...allowedOrderStatuses].forEach(st => { %>
+                <a class="filter-pill <%= statusFilter === st ? 'active' : '' %>" href="<%= secretPath %>?tab=orders&status=<%= encodeURIComponent(st) %>"><%= st %></a>
+              <% }) %>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Order / Date</th>
+                <th>Customer & Address</th>
+                <th>Items, Voucher & COD Total</th>
+                <th>WhatsApp Outbox</th>
+                <th>Update Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% if (orders.length === 0) { %>
+                <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:1.5rem;">No orders found for this filter.</td></tr>
+              <% } %>
+              <% orders.forEach(o => { %>
+                <tr>
+                  <td>
+                    <strong><%= o.order_number %></strong><br>
+                    <small style="color:var(--muted);"><%= new Date(o.created_at).toLocaleString("en-PK") %></small><br>
+                    <span class="badge <%= o.status %>" style="margin-top:0.3rem;"><%= o.status %></span>
+                  </td>
+                  <td>
+                    <strong><%= o.customer_name %></strong><br>
+                    <code><%= o.phone_e164 %></code><br>
+                    <small><%= o.address %><%= o.area ? ", " + o.area : "" %>, <%= o.city %>, <%= o.province %></small>
+                    <% if (o.notes) { %><br><small style="color:var(--accent);">Note: <%= o.notes %></small><% } %>
+                  </td>
+                  <td>
+                    <ul style="margin:0;padding-left:1.1rem;">
+                      <% o.items.forEach(it => { %>
+                        <li><%= it.product_name %> × <%= it.quantity %> (Rs. <%= Number(it.line_total).toLocaleString("en-PK") %>)</li>
+                      <% }) %>
+                    </ul>
+                    <div style="margin-top:0.35rem;font-size:0.82rem;">
+                      Subtotal: Rs. <%= Number(o.subtotal).toLocaleString("en-PK") %> |
+                      Shipping: Rs. <%= Number(o.shipping_fee).toLocaleString("en-PK") %>
+                      <% if (Number(o.discount_amount) > 0) { %>
+                        <br><span style="color:var(--green);font-weight:600;">Voucher (<%= o.voucher_code %>): -Rs. <%= Number(o.discount_amount).toLocaleString("en-PK") %></span>
+                      <% } %>
+                      <br><strong>Total COD: Rs. <%= Number(o.total).toLocaleString("en-PK") %></strong>
+                    </div>
+                  </td>
+                  <td>
+                    <% o.notifications.forEach(n => { %>
+                      <div style="margin-bottom:0.35rem;">
+                        <span class="badge <%= n.status %>"><%= n.status %></span>
+                        <small><%= n.notification_type.replace(/_/g, " ") %></small>
+                        <% if (n.status !== "sent") { %>
+                          <form action="<%= secretPath %>/outbox/<%= n.id %>/retry" method="POST" style="display:inline;">
+                            <button type="submit" style="padding:0.15rem 0.45rem;font-size:0.72rem;">Retry</button>
+                          </form>
+                        <% } %>
+                      </div>
+                    <% }) %>
+                  </td>
+                  <td>
+                    <form action="<%= secretPath %>/orders/<%= encodeURIComponent(o.order_number) %>/status" method="POST" style="display:flex;gap:0.4rem;">
+                      <select name="status" style="width:135px;">
+                        <% allowedOrderStatuses.forEach(st => { %>
+                          <option value="<%= st %>" <%= o.status === st ? "selected" : "" %>><%= st %></option>
+                        <% }) %>
+                      </select>
+                      <button type="submit">Save</button>
+                    </form>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </section>
+      <% } %>
+
+      <% if (activeTab === "products") { %>
+        <!-- Bulk Discount Bar -->
+        <section class="card">
+          <div class="card-head">
+            <h3>⚡ Storewide / Category Quick Discount</h3>
+          </div>
+          <form action="<%= secretPath %>/products/bulk-discount" method="POST" style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:flex-end;">
+            <label class="field" style="width:220px;">
+              Target Category
+              <select name="category">
+                <option value="ALL">All Products Storewide</option>
+                <% categories.forEach(cat => { %>
+                  <option value="<%= cat %>"><%= cat %></option>
+                <% }) %>
+              </select>
+            </label>
+            <label class="field" style="width:180px;">
+              Discount % (0 = Reset)
+              <input type="number" name="percent" min="0" max="90" value="10" required>
+            </label>
+            <button type="submit">Apply Bulk Discount</button>
+          </form>
+        </section>
+
+        <!-- Add New Product (All 14 Excel Fields + Picture Upload) -->
+        <section class="card">
+          <div class="card-head">
+            <h2>➕ Add New Candle / Product (All Excel Fields + Image Upload)</h2>
+          </div>
+          <form action="<%= secretPath %>/products/create" method="POST" enctype="multipart/form-data">
+            <div class="form-grid">
+              <label class="field">SKU * <input type="text" name="sku" placeholder="e.g. AN-CND-009" required></label>
+              <label class="field">Product Name * <input type="text" name="name" placeholder="e.g. Rose Pillar Candle" required></label>
+              <label class="field">Category * <input type="text" name="category" list="catList" placeholder="e.g. Floral Candles" required></label>
+              <datalist id="catList">
+                <% categories.forEach(cat => { %><option value="<%= cat %>"><% }) %>
+              </datalist>
+              <label class="field">Regular Price (Rs.) * <input type="number" id="newPrice" name="price" min="1" placeholder="1200" oninput="calcSale('new')" required></label>
+              <label class="field">Discount % (Helper) <input type="number" id="newDisc" min="0" max="90" value="0" oninput="calcSale('new')"></label>
+              <label class="field">Sale Price (Rs.) * <input type="number" id="newSale" name="sale_price" min="1" placeholder="1200" required></label>
+              <label class="field">Stock Quantity * <input type="number" name="stock" min="0" value="10" required></label>
+              <label class="field">Status *
+                <select name="status">
+                  <% allowedProductStatuses.forEach(st => { %><option value="<%= st %>"><%= st %></option><% }) %>
+                </select>
+              </label>
+              <label class="field">Scent <input type="text" name="scent" placeholder="e.g. Oud & Vanilla"></label>
+              <label class="field">Color <input type="text" name="color" placeholder="e.g. Ivory / Blush Pink"></label>
+              <label class="field">Size <input type="text" name="size" placeholder="e.g. Large / Medium"></label>
+              <label class="field">Weight <input type="text" name="weight" placeholder="e.g. 220g"></label>
+              <label class="field">Dimensions <input type="text" name="dimensions" placeholder="e.g. 8cm × 10cm"></label>
+              <label class="field">Upload Product Picture <input type="file" name="picture" accept="image/*"></label>
+              <label class="field" style="justify-content:center;flex-direction:row;align-items:center;gap:0.5rem;padding-top:1.3rem;">
+                <input type="checkbox" name="featured" value="true"> Featured on Homepage
+              </label>
+            </div>
+            <label class="field" style="margin-top:0.85rem;">
+              Description
+              <textarea name="description" rows="2" placeholder="Describe the candle, notes, and gifting appeal..."></textarea>
+            </label>
+            <div style="margin-top:1rem;">
+              <button type="submit">Add Product to Storefront →</button>
+            </div>
+          </form>
+        </section>
+
+        <!-- Existing Products List + Full 14-Field Editor -->
+        <section class="card">
+          <div class="card-head">
+            <h2>Catalog Items (<%= products.length %>)</h2>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Photo</th>
+                <th>SKU / Name</th>
+                <th>Category & Specs</th>
+                <th>Pricing & Discount</th>
+                <th>Stock / Status</th>
+                <th>Edit All Fields / Remove</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% products.forEach((p, idx) => {
+                   const regP = Number(p.price || 0);
+                   const salP = Number(p.sale_price || regP);
+                   const pctOff = regP > 0 && salP < regP ? Math.round(((regP - salP) / regP) * 100) : 0;
+              %>
+                <tr>
+                  <td>
+                    <% if (p.image_url) { %>
+                      <img class="thumb" src="<%= p.image_url %>" alt="<%= p.name %>">
+                    <% } else { %>
+                      <div class="thumb" style="display:flex;align-items:center;justify-content:center;font-size:0.7rem;color:var(--muted);">No Img</div>
+                    <% } %>
+                  </td>
+                  <td>
+                    <code><%= p.sku %></code>
+                    <% if (p.featured) { %><span class="badge Active">★ Featured</span><% } %><br>
+                    <strong><%= p.name %></strong>
+                  </td>
+                  <td>
+                    <strong><%= p.category %></strong><br>
+                    <small style="color:var(--muted);">
+                      Scent: <%= p.scent || "—" %> | Color: <%= p.color || "—" %><br>
+                      Size: <%= p.size || "—" %> | Wt: <%= p.weight || "—" %> | Dim: <%= p.dimensions || "—" %>
+                    </small>
+                  </td>
+                  <td>
+                    <% if (pctOff > 0) { %>
+                      <span style="text-decoration:line-through;color:var(--muted);">Rs. <%= regP.toLocaleString("en-PK") %></span><br>
+                      <strong style="color:var(--green);">Rs. <%= salP.toLocaleString("en-PK") %> (<%= pctOff %>% OFF)</strong>
+                    <% } else { %>
+                      <strong>Rs. <%= regP.toLocaleString("en-PK") %></strong>
+                    <% } %>
+                  </td>
+                  <td>
+                    <strong><%= p.stock %> in stock</strong><br>
+                    <span class="badge <%= p.status %>"><%= p.status %></span>
+                  </td>
+                  <td style="min-width:340px;">
+                    <details class="editor-box">
+                      <summary>✏️ Edit All Excel Fields & Picture</summary>
+                      <form action="<%= secretPath %>/products/<%= encodeURIComponent(p.sku) %>/update" method="POST" enctype="multipart/form-data" style="margin-top:0.75rem;">
+                        <div class="form-grid" style="grid-template-columns:repeat(2, 1fr);">
+                          <label class="field">SKU <input type="text" name="sku" value="<%= p.sku %>" required></label>
+                          <label class="field">Name <input type="text" name="name" value="<%= p.name %>" required></label>
+                          <label class="field">Category <input type="text" name="category" value="<%= p.category %>" required></label>
+                          <label class="field">Status
+                            <select name="status">
+                              <% allowedProductStatuses.forEach(st => { %>
+                                <option value="<%= st %>" <%= p.status === st ? "selected" : "" %>><%= st %></option>
+                              <% }) %>
+                            </select>
+                          </label>
+                          <label class="field">Regular Price (Rs.) <input type="number" id="pPrice<%= idx %>" name="price" value="<%= regP %>" min="1" oninput="calcRowSale(<%= idx %>)" required></label>
+                          <label class="field">Discount % <input type="number" id="pDisc<%= idx %>" value="<%= pctOff %>" min="0" max="90" oninput="calcRowSale(<%= idx %>)"></label>
+                          <label class="field">Sale Price (Rs.) <input type="number" id="pSale<%= idx %>" name="sale_price" value="<%= salP %>" min="1" required></label>
+                          <label class="field">Stock <input type="number" name="stock" value="<%= p.stock %>" min="0" required></label>
+                          <label class="field">Scent <input type="text" name="scent" value="<%= p.scent || '' %>"></label>
+                          <label class="field">Color <input type="text" name="color" value="<%= p.color || '' %>"></label>
+                          <label class="field">Size <input type="text" name="size" value="<%= p.size || '' %>"></label>
+                          <label class="field">Weight <input type="text" name="weight" value="<%= p.weight || '' %>"></label>
+                          <label class="field">Dimensions <input type="text" name="dimensions" value="<%= p.dimensions || '' %>"></label>
+                          <label class="field">Replace Picture <input type="file" name="picture" accept="image/*"></label>
+                        </div>
+                        <label class="field" style="margin-top:0.5rem;">
+                          Description
+                          <textarea name="description" rows="2"><%= p.description || '' %></textarea>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:0.4rem;margin:0.5rem 0;font-size:0.82rem;">
+                          <input type="checkbox" name="featured" value="true" <%= p.featured ? "checked" : "" %>> Featured on Homepage
+                        </label>
+                        <button type="submit">Save Changes</button>
+                      </form>
+                    </details>
+                    <form action="<%= secretPath %>/products/<%= encodeURIComponent(p.sku) %>/delete" method="POST" onsubmit="return confirm('Delete <%= p.name %> (<%= p.sku %>) from catalog?');" style="margin-top:0.4rem;">
+                      <button type="submit" class="btn-danger" style="padding:0.28rem 0.65rem;font-size:0.76rem;">🗑 Remove Item</button>
+                    </form>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </section>
+      <% } %>
+
+      <% if (activeTab === "vouchers") { %>
+        <section class="card">
+          <div class="card-head">
+            <h2>🎟 Create / Update Discount Voucher</h2>
+          </div>
+          <form action="<%= secretPath %>/vouchers/create" method="POST">
+            <div class="form-grid">
+              <label class="field">Voucher Code * <input type="text" name="code" placeholder="e.g. AYENOOR10 or EID500" required></label>
+              <label class="field">Discount Type *
+                <select name="discount_type">
+                  <option value="percent">Percentage (% Off)</option>
+                  <option value="fixed">Fixed Amount (Rs. Off)</option>
+                </select>
+              </label>
+              <label class="field">Discount Value (% or Rs.) * <input type="number" name="discount_value" min="1" placeholder="e.g. 15 or 300" required></label>
+              <label class="field">Min Order Subtotal (Rs.) <input type="number" name="min_order_amount" min="0" value="0"></label>
+              <label class="field">Max Discount Cap (Rs., optional) <input type="number" name="max_discount_amount" min="1" placeholder="Optional cap for %"></label>
+              <label class="field">Max Total Uses (optional) <input type="number" name="usage_limit" min="1" placeholder="Unlimited if blank"></label>
+              <label class="field">Expiry Date (optional) <input type="date" name="expires_at"></label>
+            </div>
+            <div style="margin-top:1rem;">
+              <button type="submit">Save Voucher Code →</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>Active & Past Vouchers (<%= vouchers.length %>)</h2>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Discount</th>
+                <th>Min Subtotal / Cap</th>
+                <th>Usage</th>
+                <th>Expires</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% if (vouchers.length === 0) { %>
+                <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:1.5rem;">No discount vouchers created yet.</td></tr>
+              <% } %>
+              <% vouchers.forEach(v => { %>
+                <tr>
+                  <td><strong style="font-size:1rem;"><code><%= v.code %></code></strong></td>
+                  <td>
+                    <% if (v.discount_type === "percent") { %>
+                      <strong><%= Number(v.discount_value) %>% OFF</strong>
+                    <% } else { %>
+                      <strong>Rs. <%= Number(v.discount_value).toLocaleString("en-PK") %> OFF</strong>
+                    <% } %>
+                  </td>
+                  <td>
+                    Min Order: Rs. <%= Number(v.min_order_amount || 0).toLocaleString("en-PK") %>
+                    <% if (v.max_discount_amount) { %><br><small>Max Cap: Rs. <%= Number(v.max_discount_amount).toLocaleString("en-PK") %></small><% } %>
+                  </td>
+                  <td><%= v.used_count %> / <%= v.usage_limit || "∞" %></td>
+                  <td><%= v.expires_at ? new Date(v.expires_at).toLocaleDateString("en-PK") : "Never" %></td>
+                  <td>
+                    <span class="badge <%= v.is_active ? 'Active' : 'Cancelled' %>"><%= v.is_active ? "Active" : "Paused" %></span>
+                  </td>
+                  <td style="display:flex;gap:0.4rem;">
+                    <form action="<%= secretPath %>/vouchers/<%= encodeURIComponent(v.code) %>/toggle" method="POST">
+                      <button type="submit" class="btn-ghost"><%= v.is_active ? "Pause" : "Activate" %></button>
+                    </form>
+                    <form action="<%= secretPath %>/vouchers/<%= encodeURIComponent(v.code) %>/delete" method="POST" onsubmit="return confirm('Delete voucher <%= v.code %>?');">
+                      <button type="submit" class="btn-danger">Delete</button>
+                    </form>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </section>
+      <% } %>
+
+      <% if (activeTab === "contacts") { %>
+        <section class="card">
+          <div class="card-head">
+            <h2>Customer Contact Inquiries (<%= contacts.length %>)</h2>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Reference</th>
+                <th>Date</th>
+                <th>Name</th>
+                <th>Contact</th>
+                <th>Topic</th>
+                <th>Message</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% if (contacts.length === 0) { %>
+                <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:1.5rem;">No inquiries yet.</td></tr>
+              <% } %>
+              <% contacts.forEach(c => { %>
+                <tr>
+                  <td><code><%= c.reference_id %></code></td>
+                  <td><small><%= c.created_at ? new Date(c.created_at).toLocaleString("en-PK") : "—" %></small></td>
+                  <td><strong><%= c.name %></strong></td>
+                  <td><%= c.contact %></td>
+                  <td><%= c.topic %></td>
+                  <td><%= c.message %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </section>
+      <% } %>
+
+    <% } %>
+  </main>
+
+  <script>
+    function calcSale(prefix) {
+      const price = Number(document.getElementById(prefix + "Price").value || 0);
+      const disc = Number(document.getElementById(prefix + "Disc").value || 0);
+      if (price > 0 && disc >= 0 && disc <= 90) {
+        document.getElementById(prefix + "Sale").value = Math.max(1, Math.round(price * (100 - disc) / 100));
+      }
+    }
+    function calcRowSale(idx) {
+      const price = Number(document.getElementById("pPrice" + idx).value || 0);
+      const disc = Number(document.getElementById("pDisc" + idx).value || 0);
+      if (price > 0 && disc >= 0 && disc <= 90) {
+        document.getElementById("pSale" + idx).value = Math.max(1, Math.round(price * (100 - disc) / 100));
+      }
+    }
+  </script>
+</body>
+</html>

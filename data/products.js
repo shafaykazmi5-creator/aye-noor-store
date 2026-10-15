@@ -298,3 +298,6 @@ module.exports = {
   buildCartQuote,
   formatMoney
 };
+
+// Step 9: Auto-sync PRODUCTS array from PostgreSQL
+require('../db/sync-products').syncProductsFromDB(PRODUCTS);

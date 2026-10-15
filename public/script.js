@@ -512,6 +512,10 @@
 
   /* ---------- Checkout Form Submission (Step 7) ---------- */
   const checkoutForm = $("checkoutForm");
+  let checkoutIdempotencyKey = (window.crypto && window.crypto.randomUUID)
+    ? window.crypto.randomUUID()
+    : `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
   if (checkoutForm) {
     const phoneInput = $("checkoutPhone");
     const phoneHint = $("phoneHint");
@@ -525,7 +529,7 @@
         }
         const m = compact.match(/^(?:\+92|0092|92)?0?(3\d{2})(\d{7})$/);
         if (m) {
-          phoneHint.textContent = `✓ Valid 11-digit mobile number recognized`;
+          phoneHint.textContent = "✓ Valid 11-digit mobile number recognized";
           phoneHint.style.color = "var(--sage)";
         } else {
           const digitsOnly = compact.replace(/\D/g, "");
@@ -534,6 +538,7 @@
         }
       });
     }
+
     checkoutForm.addEventListener("submit", async event => {
       event.preventDefault();
       const feedback = $("checkoutFeedback");
@@ -545,6 +550,7 @@
 
       const payload = {
         items,
+        idempotencyKey: checkoutIdempotencyKey,
         fullName: $("checkoutName").value.trim(),
         phone: $("checkoutPhone").value.trim(),
         email: $("checkoutEmail").value.trim(),
@@ -554,16 +560,16 @@
         province: $("checkoutProvince").value,
         notes: $("checkoutNotes").value.trim(),
         paymentMethod: selectedPayment ? selectedPayment.value : "cod",
-        whatsappOptIn: $("checkoutWhatsappOptIn").checked
+        whatsappOptIn: Boolean($("checkoutWhatsappOptIn") && $("checkoutWhatsappOptIn").checked)
       };
 
       submitBtn.disabled = true;
       previewBox.classList.add("hidden");
       feedback.className = "form-feedback";
-      feedback.textContent = "Verifying your address, phone number, and cart prices on the server…";
+      feedback.textContent = "Verifying stock and placing your order…";
 
       try {
-        const res = await fetch("/api/checkout/preview", {
+        const res = await fetch("/api/checkout", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
@@ -573,39 +579,44 @@
         if (!res.ok) {
           feedback.className = "form-feedback error";
           feedback.textContent = data.error || "Please check your checkout details and try again.";
-          if (data.field) {
-            const fieldMap = {
-              fullName: "checkoutName",
-              phone: "checkoutPhone",
-              email: "checkoutEmail",
-              address: "checkoutAddress",
-              area: "checkoutArea",
-              city: "checkoutCity",
-              province: "checkoutProvince",
-              notes: "checkoutNotes"
-            };
-            const targetEl = $(fieldMap[data.field]);
-            if (targetEl) targetEl.focus();
-          }
+          if (data.field === "cart") syncCartWithServer();
           return;
         }
 
-        feedback.className = "form-feedback success";
-        feedback.textContent = `✓ Checkout details verified by the server (${data.previewNumber}).`;
+        // Rotate idempotency key for any future separate order
+        checkoutIdempotencyKey = (window.crypto && window.crypto.randomUUID)
+          ? window.crypto.randomUUID()
+          : `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+        const orderNum = data.orderNumber;
         const c = data.customer;
         const q = data.quote;
+
+        cart.clear();
+        saveCartToStorage();
+        if ($("cartCount")) $("cartCount").textContent = "0";
+
+        const itemsHtml = q.items.map(i =>
+          `<li><strong>${escapeHTML(i.name)}</strong> × ${i.qty} — ${money(i.lineTotal)}</li>`
+        ).join("");
+
+        feedback.className = "form-feedback success";
+        feedback.textContent = `✓ Order confirmed (${orderNum}).`;
+
         previewBox.innerHTML = `
-          <h3>Server-Verified Order Payload (${escapeHTML(data.previewNumber)})</h3>
-          <p class="preview-sub">This payload passed all server validations and is ready for PostgreSQL order creation in Step 10:</p>
+          <h3>✓ Order Confirmed (${escapeHTML(orderNum)})</h3>
+          <p class="preview-sub">Thank you, <strong>${escapeHTML(c.fullName)}</strong>! We have sent an order verification message to your WhatsApp number. <strong>Please reply CONFIRM on WhatsApp</strong> to confirm your order for dispatch.</p>
           <dl class="preview-dl">
-            <div><dt>Customer</dt><dd>${escapeHTML(c.fullName)}</dd></div>
-            <div><dt>WhatsApp / Mobile</dt><dd>${escapeHTML(c.phoneLocal)} <code>(${escapeHTML(c.phoneE164)})</code></dd></div>
+            <div><dt>Order Number</dt><dd><strong>${escapeHTML(orderNum)}</strong></dd></div>
+            <div><dt>Mobile Number</dt><dd>${escapeHTML(c.phoneLocal)} <code>(${escapeHTML(c.phoneE164)})</code></dd></div>
             <div><dt>Delivery Address</dt><dd>${escapeHTML(c.address)}${c.area ? ", " + escapeHTML(c.area) : ""}, ${escapeHTML(c.city)}, ${escapeHTML(c.province)}</dd></div>
             <div><dt>Payment Method</dt><dd>${escapeHTML(c.paymentMethod)}</dd></div>
-            <div><dt>WhatsApp Alerts</dt><dd>${c.whatsappOptIn ? "Opted in for customer WhatsApp confirmation" : "Owner alert only"}</dd></div>
-            <div><dt>Verified Total</dt><dd><strong>${money(q.total)}</strong> (${q.itemCount} items, shipping: ${q.shippingFee === 0 ? "Free" : money(q.shippingFee)})</dd></div>
+            <div><dt>Total Payable</dt><dd><strong>${money(q.total)}</strong> (${q.itemCount} items, shipping: ${q.shippingFee === 0 ? "Free" : money(q.shippingFee)})</dd></div>
           </dl>
+          <ul style="margin: 0.75rem 0 1.25rem 1.25rem;">${itemsHtml}</ul>
+          <div style="margin-top:1rem;">
+            <a class="dark-button" href="/shop">Continue shopping →</a>
+          </div>
         `;
         previewBox.classList.remove("hidden");
         previewBox.scrollIntoView({ behavior: scrollBehavior(), block: "nearest" });

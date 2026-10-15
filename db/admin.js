@@ -1,0 +1,733 @@
+"use strict";
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+const express = require("express");
+const multer = require("multer");
+
+const ALLOWED_ORDER_STATUSES = ["Pending", "Confirmed", "Dispatched", "Delivered", "Cancelled"];
+const ALLOWED_PRODUCT_STATUSES = ["Active", "Draft", "Out of Stock", "Discontinued"];
+const COOKIE_NAME = "ayenoor_SecretAdminSession";
+
+const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads", "products");
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
+  filename: (req, file, cb) => {
+    const rawSku = String((req.body && req.body.sku) || req.params.sku || "candle")
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, "-");
+    const ext = path.extname(file.originalname || "").toLowerCase() || ".jpg";
+    const safeExt = [".jpg", ".jpeg", ".png", ".webp", ".gif"].includes(ext) ? ext : ".jpg";
+    cb(null, `${rawSku}-${Date.now()}${safeExt}`);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(jpeg|png|webp|gif)$/i.test(file.mimetype || "")) return cb(null, true);
+    cb(new Error("Only JPG, PNG, WEBP, or GIF images are allowed."));
+  }
+});
+
+function getSecretPath() {
+  let p = String(process.env.ADMIN_SECRET_PATH || "/an-panel-7x9k").trim();
+  if (!p.startsWith("/")) p = "/" + p;
+  return p.replace(/\/+$/, "");
+}
+
+function getAdminPassword() {
+  return process.env.ADMIN_PASSWORD || "AyeNoorAdmin2026!";
+}
+
+function getExpectedToken() {
+  return crypto
+    .createHmac("sha256", getAdminPassword())
+    .update("ayenoor-secret-admin:" + getSecretPath())
+    .digest("hex");
+}
+
+function parseCookies(req) {
+  const list = {};
+  const rc = req.headers.cookie;
+  if (!rc) return list;
+  rc.split(";").forEach(cookie => {
+    const parts = cookie.split("=");
+    const key = parts.shift().trim();
+    const val = decodeURIComponent(parts.join("=").trim());
+    if (key) list[key] = val;
+  });
+  return list;
+}
+
+function isAuthenticated(req) {
+  const cookies = parseCookies(req);
+  const token = cookies[COOKIE_NAME] || "";
+  const expected = getExpectedToken();
+  const bufA = Buffer.from(String(token));
+  const bufB = Buffer.from(String(expected));
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+function safeComparePassword(input, actual) {
+  const hashA = crypto.createHash("sha256").update(String(input || "")).digest();
+  const hashB = crypto.createHash("sha256").update(String(actual || "")).digest();
+  return crypto.timingSafeEqual(hashA, hashB);
+}
+
+function slugify(text) {
+  return String(text || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+const loginAttempts = new Map();
+
+async function ensureAdminAndVoucherSchema(db) {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS discount_vouchers (
+      code VARCHAR(40) PRIMARY KEY,
+      discount_type VARCHAR(20) NOT NULL CHECK (discount_type IN ('percent', 'fixed')),
+      discount_value NUMERIC(12, 2) NOT NULL CHECK (discount_value > 0),
+      min_order_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+      max_discount_amount NUMERIC(12, 2),
+      usage_limit INTEGER,
+      used_count INTEGER NOT NULL DEFAULT 0,
+      expires_at TIMESTAMP WITH TIME ZONE,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS voucher_code VARCHAR(40);
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(12, 2) NOT NULL DEFAULT 0;
+
+    DO $$
+    DECLARE
+      r RECORD;
+    BEGIN
+      FOR r IN (
+        SELECT tc.constraint_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name
+        WHERE tc.table_name = 'order_items'
+          AND tc.constraint_type = 'FOREIGN KEY'
+          AND kcu.column_name = 'sku'
+      ) LOOP
+        EXECUTE 'ALTER TABLE order_items DROP CONSTRAINT ' || quote_ident(r.constraint_name);
+      END LOOP;
+    END $$;
+
+    ALTER TABLE order_items ALTER COLUMN sku DROP NOT NULL;
+
+    DO $$
+    BEGIN
+      ALTER TABLE order_items
+        ADD CONSTRAINT order_items_sku_fkey
+        FOREIGN KEY (sku) REFERENCES products(sku)
+        ON UPDATE CASCADE ON DELETE SET NULL;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$;
+  `);
+}
+
+function calculateVoucherDiscount(voucher, subtotal) {
+  const sub = Number(subtotal || 0);
+  if (!voucher || !voucher.is_active) {
+    return { valid: false, message: "This voucher code is invalid or inactive." };
+  }
+  if (voucher.expires_at && new Date(voucher.expires_at) < new Date()) {
+    return { valid: false, message: "This voucher code has expired." };
+  }
+  if (voucher.usage_limit !== null && Number(voucher.used_count) >= Number(voucher.usage_limit)) {
+    return { valid: false, message: "This voucher code has reached its usage limit." };
+  }
+  const minOrder = Number(voucher.min_order_amount || 0);
+  if (sub < minOrder) {
+    return {
+      valid: false,
+      message: `Minimum order subtotal of Rs. ${minOrder.toLocaleString("en-PK")} is required for ${voucher.code}.`
+    };
+  }
+
+  let discount = 0;
+  if (voucher.discount_type === "percent") {
+    discount = Math.round((sub * Number(voucher.discount_value)) / 100);
+    if (voucher.max_discount_amount !== null && Number(voucher.max_discount_amount) > 0) {
+      discount = Math.min(discount, Math.round(Number(voucher.max_discount_amount)));
+    }
+  } else {
+    discount = Math.round(Number(voucher.discount_value));
+  }
+
+  discount = Math.min(discount, sub);
+  if (discount <= 0) {
+    return { valid: false, message: "Voucher discount is not applicable to this subtotal." };
+  }
+
+  return {
+    valid: true,
+    code: voucher.code,
+    discountType: voucher.discount_type,
+    discountValue: Number(voucher.discount_value),
+    discountAmount: discount
+  };
+}
+
+async function applyVoucherInTransaction(client, rawCode, subtotal) {
+  const code = String(rawCode || "").trim().toUpperCase();
+  if (!code) return null;
+
+  const vRes = await client.query(
+    "SELECT * FROM discount_vouchers WHERE code = $1 FOR UPDATE",
+    [code]
+  );
+  if (vRes.rows.length === 0) {
+    throw new Error(`Voucher code "${code}" does not exist.`);
+  }
+
+  const check = calculateVoucherDiscount(vRes.rows[0], subtotal);
+  if (!check.valid) {
+    throw new Error(check.message);
+  }
+
+  await client.query(
+    "UPDATE discount_vouchers SET used_count = used_count + 1 WHERE code = $1",
+    [code]
+  );
+
+  return check;
+}
+
+function registerAdminRoutes(app, { db, forceSyncNow, processOutboxBatch }) {
+  const secretPath = getSecretPath();
+
+  ensureAdminAndVoucherSchema(db)
+    .then(() => {
+      console.log(`🔒 Secret Admin Panel ready at: http://localhost:${process.env.PORT || 3000}${secretPath}`);
+    })
+    .catch(err => console.warn("⚠️ Admin schema init warning:", err.message));
+
+  // Public API for live voucher preview on /checkout
+  app.post("/api/voucher/verify", express.json(), async (req, res) => {
+    try {
+      const code = String((req.body && req.body.code) || "").trim().toUpperCase();
+      const subtotal = Number((req.body && req.body.subtotal) || 0);
+      if (!code) return res.status(400).json({ ok: false, message: "Please enter a voucher code." });
+
+      const vRes = await db.query("SELECT * FROM discount_vouchers WHERE code = $1", [code]);
+      if (vRes.rows.length === 0) {
+        return res.status(404).json({ ok: false, message: "Invalid voucher code." });
+      }
+      const check = calculateVoucherDiscount(vRes.rows[0], subtotal);
+      if (!check.valid) {
+        return res.status(400).json({ ok: false, message: check.message });
+      }
+      return res.json({
+        ok: true,
+        code: check.code,
+        discountType: check.discountType,
+        discountValue: check.discountValue,
+        discountAmount: check.discountAmount,
+        message: `Voucher ${check.code} applied! (-Rs. ${check.discountAmount.toLocaleString("en-PK")})`
+      });
+    } catch (err) {
+      return res.status(500).json({ ok: false, message: "Could not verify voucher right now." });
+    }
+  });
+
+  const router = express.Router();
+  router.use(express.urlencoded({ extended: true }));
+  router.use(express.json());
+
+  router.get("/login", (req, res) => {
+    if (isAuthenticated(req)) return res.redirect(secretPath);
+    res.render("admin", {
+      viewMode: "login",
+      secretPath,
+      error: req.query.error || null
+    });
+  });
+
+  router.post("/login", (req, res) => {
+    const ip = req.ip || "local";
+    const now = Date.now();
+    const rec = loginAttempts.get(ip) || { count: 0, resetAt: now + 15 * 60 * 1000 };
+    if (now > rec.resetAt) {
+      rec.count = 0;
+      rec.resetAt = now + 15 * 60 * 1000;
+    }
+    if (rec.count >= 5) {
+      return res.redirect(`${secretPath}/login?error=${encodeURIComponent("Too many failed attempts. Please wait 15 minutes.")}`);
+    }
+
+    const password = (req.body && req.body.password) || "";
+    if (!safeComparePassword(password, getAdminPassword())) {
+      rec.count += 1;
+      loginAttempts.set(ip, rec);
+      return res.redirect(`${secretPath}/login?error=${encodeURIComponent("Incorrect admin password.")}`);
+    }
+
+    loginAttempts.delete(ip);
+    const token = getExpectedToken();
+    res.setHeader(
+      "Set-Cookie",
+      `${COOKIE_NAME}=${token}; HttpOnly; Path=${secretPath}; SameSite=Lax; Max-Age=604800`
+    );
+    return res.redirect(secretPath);
+  });
+
+  router.post("/logout", (req, res) => {
+    res.setHeader(
+      "Set-Cookie",
+      `${COOKIE_NAME}=; HttpOnly; Path=${secretPath}; SameSite=Lax; Max-Age=0`
+    );
+    return res.redirect(`${secretPath}/login`);
+  });
+
+  router.use((req, res, next) => {
+    if (!isAuthenticated(req)) return res.redirect(`${secretPath}/login`);
+    next();
+  });
+
+  // Main Dashboard
+  router.get("/", async (req, res) => {
+    try {
+      const statusFilter = ALLOWED_ORDER_STATUSES.includes(req.query.status) ? req.query.status : "All";
+      const activeTab = ["orders", "products", "vouchers", "contacts"].includes(req.query.tab)
+        ? req.query.tab
+        : "orders";
+
+      const [ordersRes, itemsRes, outboxRes, productsRes, vouchersRes, contactsRes] = await Promise.all([
+        db.query(`
+          SELECT order_number, customer_name, phone_e164, email, address, area, city, province,
+                 notes, payment_method, subtotal, shipping_fee, voucher_code, discount_amount,
+                 total, status, created_at
+          FROM orders
+          ORDER BY created_at DESC, order_number DESC
+          LIMIT 250
+        `),
+        db.query(`
+          SELECT order_number, sku, product_name, unit_price, quantity, line_total
+          FROM order_items
+          ORDER BY id ASC
+        `),
+        db.query(`
+          SELECT id, order_number, notification_type, recipient_phone, status, attempts, max_attempts, last_error
+          FROM notification_outbox
+          ORDER BY id ASC
+        `),
+        db.query(`
+          SELECT sku, slug, name, category, price, sale_price, stock, status, featured,
+                 scent, color, size, weight, dimensions, description, image_url
+          FROM products
+          ORDER BY sku ASC
+        `),
+        db.query(`
+          SELECT code, discount_type, discount_value, min_order_amount, max_discount_amount,
+                 usage_limit, used_count, expires_at, is_active, created_at
+          FROM discount_vouchers
+          ORDER BY created_at DESC
+        `),
+        db.query(`
+          SELECT reference_id, name, contact, topic, message, created_at
+          FROM contact_messages
+          ORDER BY created_at DESC
+          LIMIT 100
+        `)
+      ]);
+
+      const itemsByOrder = new Map();
+      for (const item of itemsRes.rows) {
+        if (!itemsByOrder.has(item.order_number)) itemsByOrder.set(item.order_number, []);
+        itemsByOrder.get(item.order_number).push(item);
+      }
+
+      const outboxByOrder = new Map();
+      for (const job of outboxRes.rows) {
+        if (!outboxByOrder.has(job.order_number)) outboxByOrder.set(job.order_number, []);
+        outboxByOrder.get(job.order_number).push(job);
+      }
+
+      const allOrders = ordersRes.rows.map(o => ({
+        ...o,
+        items: itemsByOrder.get(o.order_number) || [],
+        notifications: outboxByOrder.get(o.order_number) || []
+      }));
+
+      const filteredOrders = statusFilter === "All"
+        ? allOrders
+        : allOrders.filter(o => o.status === statusFilter);
+
+      const categories = Array.from(
+        new Set(productsRes.rows.map(p => String(p.category || "").trim()).filter(Boolean))
+      );
+
+      const stats = {
+        activeRevenue: allOrders
+          .filter(o => o.status !== "Cancelled")
+          .reduce((sum, o) => sum + Number(o.total || 0), 0),
+        pendingCount: allOrders.filter(o => o.status === "Pending").length,
+        confirmedCount: allOrders.filter(o => o.status === "Confirmed").length,
+        dispatchedCount: allOrders.filter(o => o.status === "Dispatched").length,
+        deliveredCount: allOrders.filter(o => o.status === "Delivered").length,
+        totalProducts: productsRes.rows.length,
+        activeVouchers: vouchersRes.rows.filter(v => v.is_active).length
+      };
+
+      res.render("admin", {
+        viewMode: "dashboard",
+        secretPath,
+        activeTab,
+        statusFilter,
+        allowedOrderStatuses: ALLOWED_ORDER_STATUSES,
+        allowedProductStatuses: ALLOWED_PRODUCT_STATUSES,
+        categories,
+        stats,
+        orders: filteredOrders,
+        products: productsRes.rows,
+        vouchers: vouchersRes.rows,
+        contacts: contactsRes.rows,
+        msg: req.query.msg || null,
+        err: req.query.err || null
+      });
+    } catch (err) {
+      console.error("❌ Admin error:", err.message);
+      res.status(500).send("Admin error: " + err.message);
+    }
+  });
+
+  // Order Status Update + Stock Reconciliation
+  router.post("/orders/:orderNumber/status", async (req, res) => {
+    const orderNumber = String(req.params.orderNumber || "").trim();
+    const newStatus = String((req.body && req.body.status) || "").trim();
+    if (!ALLOWED_ORDER_STATUSES.includes(newStatus)) {
+      return res.redirect(`${secretPath}?tab=orders&err=Invalid+order+status`);
+    }
+
+    const client = await db.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const ordRes = await client.query(
+        "SELECT order_number, customer_name, phone_e164, city, total, status FROM orders WHERE order_number = $1 FOR UPDATE",
+        [orderNumber]
+      );
+      if (ordRes.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.redirect(`${secretPath}?tab=orders&err=Order+not+found`);
+      }
+
+      const ord = ordRes.rows[0];
+      const oldStatus = ord.status;
+
+      if (oldStatus !== newStatus) {
+        const itemsRes = await client.query(
+          "SELECT sku, quantity FROM order_items WHERE order_number = $1",
+          [orderNumber]
+        );
+
+        if (oldStatus !== "Cancelled" && newStatus === "Cancelled") {
+          for (const item of itemsRes.rows) {
+            if (item.sku) {
+              await client.query(
+                "UPDATE products SET stock = stock + $1 WHERE sku = $2",
+                [Number(item.quantity), item.sku]
+              );
+            }
+          }
+        }
+
+        if (oldStatus === "Cancelled" && newStatus !== "Cancelled") {
+          for (const item of itemsRes.rows) {
+            if (!item.sku) continue;
+            const pRes = await client.query("SELECT name, stock FROM products WHERE sku = $1 FOR UPDATE", [item.sku]);
+            if (pRes.rows.length > 0) {
+              const avail = Number(pRes.rows[0].stock);
+              const needed = Number(item.quantity);
+              if (avail < needed) {
+                await client.query("ROLLBACK");
+                return res.redirect(
+                  `${secretPath}?tab=orders&err=${encodeURIComponent(`Insufficient stock to un-cancel: only ${avail} left of ${pRes.rows[0].name}`)}`
+                );
+              }
+              await client.query("UPDATE products SET stock = stock - $1 WHERE sku = $2", [needed, item.sku]);
+            }
+          }
+        }
+
+        await client.query("UPDATE orders SET status = $1 WHERE order_number = $2", [newStatus, orderNumber]);
+
+        if (newStatus === "Dispatched") {
+          const senderPhone = process.env.WHATSAPP_SENDER_NUMBER || "+923000000000";
+          const dedupKey = `order:${orderNumber}:customer_order_dispatched`;
+          const dispatchText = [
+            `📦 *Good news ${ord.customer_name}!*`,
+            `Your Aye Noor order *#${orderNumber}* has been *DISPATCHED* and is on its way to ${ord.city}.`,
+            `Please keep *Rs. ${Number(ord.total || 0).toLocaleString("en-PK")}* ready for Cash on Delivery.`
+          ].join("\n");
+
+          await client.query(
+            `INSERT INTO notification_outbox (dedup_key, order_number, notification_type, sender_phone, recipient_phone, payload, status)
+             VALUES ($1, $2, 'customer_order_dispatched', $3, $4, $5, 'pending')
+             ON CONFLICT (dedup_key) DO NOTHING`,
+            [dedupKey, orderNumber, senderPhone, ord.phone_e164, JSON.stringify({ messageText: dispatchText })]
+          );
+        }
+      }
+
+      await client.query("COMMIT");
+      await forceSyncNow();
+      if (newStatus === "Dispatched") setImmediate(() => processOutboxBatch());
+      return res.redirect(`${secretPath}?tab=orders&msg=${encodeURIComponent(`Order ${orderNumber} updated to ${newStatus}`)}`);
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      return res.redirect(`${secretPath}?tab=orders&err=${encodeURIComponent(err.message)}`);
+    } finally {
+      client.release();
+    }
+  });
+
+  // Outbox Manual Retry
+  router.post("/outbox/:id/retry", async (req, res) => {
+    const jobId = parseInt(req.params.id, 10);
+    try {
+      await db.query(
+        `UPDATE notification_outbox
+         SET status = 'pending', attempts = 0, next_attempt_at = CURRENT_TIMESTAMP, last_error = NULL
+         WHERE id = $1`,
+        [jobId]
+      );
+      setImmediate(() => processOutboxBatch());
+      return res.redirect(`${secretPath}?tab=orders&msg=WhatsApp+notification+queued+for+retry`);
+    } catch (err) {
+      return res.redirect(`${secretPath}?tab=orders&err=${encodeURIComponent(err.message)}`);
+    }
+  });
+
+  // Add New Product (All 14 Excel Fields + Picture Upload)
+  router.post("/products/create", upload.single("picture"), async (req, res) => {
+    try {
+      const b = req.body || {};
+      const sku = String(b.sku || "").trim().toUpperCase();
+      const name = String(b.name || "").trim();
+      const category = String(b.category || "Signature Candles").trim();
+      const price = Math.round(Number(b.price || 0));
+      const salePrice = b.sale_price ? Math.round(Number(b.sale_price)) : price;
+      const stock = Math.max(0, parseInt(b.stock || "0", 10));
+      const status = ALLOWED_PRODUCT_STATUSES.includes(b.status) ? b.status : "Active";
+      const featured = b.featured === "on" || b.featured === "true" || b.featured === "1";
+      const scent = String(b.scent || "").trim();
+      const color = String(b.color || "").trim();
+      const size = String(b.size || "").trim();
+      const weight = String(b.weight || "").trim();
+      const dimensions = String(b.dimensions || "").trim();
+      const description = String(b.description || "").trim();
+      const imageUrl = req.file ? `/uploads/products/${req.file.filename}` : "";
+
+      if (!sku || !name) {
+        return res.redirect(`${secretPath}?tab=products&err=SKU+and+Product+Name+are+required`);
+      }
+      if (price <= 0 || salePrice <= 0 || salePrice > price) {
+        return res.redirect(`${secretPath}?tab=products&err=Invalid+price+or+sale+price+(sale+price+cannot+exceed+regular+price)`);
+      }
+
+      const baseSlug = slugify(name) || slugify(sku);
+      const slug = `${baseSlug}-${ slugify(sku) }`;
+
+      await db.query(
+        `INSERT INTO products (
+          sku, slug, name, category, price, sale_price, stock, status, featured,
+          scent, color, size, weight, dimensions, description, image_url
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+        [
+          sku, slug, name, category, price, salePrice, stock, status, featured,
+          scent, color, size, weight, dimensions, description, imageUrl
+        ]
+      );
+
+      await forceSyncNow();
+      return res.redirect(`${secretPath}?tab=products&msg=${encodeURIComponent(`Added new product ${sku} (${name})`)}`);
+    } catch (err) {
+      return res.redirect(`${secretPath}?tab=products&err=${encodeURIComponent(err.message)}`);
+    }
+  });
+
+  // Edit Existing Product (All 14 Excel Fields + Optional New Picture Upload)
+  router.post("/products/:originalSku/update", upload.single("picture"), async (req, res) => {
+    try {
+      const originalSku = String(req.params.originalSku || "").trim();
+      const b = req.body || {};
+      const sku = String(b.sku || originalSku).trim().toUpperCase();
+      const name = String(b.name || "").trim();
+      const category = String(b.category || "Signature Candles").trim();
+      const price = Math.round(Number(b.price || 0));
+      const salePrice = b.sale_price ? Math.round(Number(b.sale_price)) : price;
+      const stock = Math.max(0, parseInt(b.stock || "0", 10));
+      const status = ALLOWED_PRODUCT_STATUSES.includes(b.status) ? b.status : "Active";
+      const featured = b.featured === "on" || b.featured === "true" || b.featured === "1";
+      const scent = String(b.scent || "").trim();
+      const color = String(b.color || "").trim();
+      const size = String(b.size || "").trim();
+      const weight = String(b.weight || "").trim();
+      const dimensions = String(b.dimensions || "").trim();
+      const description = String(b.description || "").trim();
+
+      if (!sku || !name) {
+        return res.redirect(`${secretPath}?tab=products&err=SKU+and+Product+Name+are+required`);
+      }
+      if (price <= 0 || salePrice <= 0 || salePrice > price) {
+        return res.redirect(`${secretPath}?tab=products&err=Sale+price+must+be+between+1+and+Regular+Price`);
+      }
+
+      const existingRes = await db.query("SELECT image_url FROM products WHERE sku = $1", [originalSku]);
+      if (existingRes.rows.length === 0) {
+        return res.redirect(`${secretPath}?tab=products&err=Product+not+found`);
+      }
+
+      const imageUrl = req.file
+        ? `/uploads/products/${req.file.filename}`
+        : (existingRes.rows[0].image_url || "");
+
+      const slug = `${slugify(name)}-${slugify(sku)}`;
+
+      await db.query(
+        `UPDATE products
+         SET sku = $1, slug = $2, name = $3, category = $4, price = $5, sale_price = $6,
+             stock = $7, status = $8, featured = $9, scent = $10, color = $11,
+             size = $12, weight = $13, dimensions = $14, description = $15, image_url = $16
+         WHERE sku = $17`,
+        [
+          sku, slug, name, category, price, salePrice,
+          stock, status, featured, scent, color,
+          size, weight, dimensions, description, imageUrl, originalSku
+        ]
+      );
+
+      await forceSyncNow();
+      return res.redirect(`${secretPath}?tab=products&msg=${encodeURIComponent(`Updated product ${sku} (${name})`)}`);
+    } catch (err) {
+      return res.redirect(`${secretPath}?tab=products&err=${encodeURIComponent(err.message)}`);
+    }
+  });
+
+  // Delete Product
+  router.post("/products/:sku/delete", async (req, res) => {
+    const sku = String(req.params.sku || "").trim();
+    try {
+      await db.query("DELETE FROM products WHERE sku = $1", [sku]);
+      await forceSyncNow();
+      return res.redirect(`${secretPath}?tab=products&msg=${encodeURIComponent(`Removed product ${sku}`)}`);
+    } catch (err) {
+      return res.redirect(`${secretPath}?tab=products&err=${encodeURIComponent(err.message)}`);
+    }
+  });
+
+  // Bulk Storewide or Category Discount Tool
+  router.post("/products/bulk-discount", async (req, res) => {
+    try {
+      const percent = Number((req.body && req.body.percent) || 0);
+      const targetCategory = String((req.body && req.body.category) || "ALL").trim();
+
+      if (!Number.isFinite(percent) || percent < 0 || percent >= 95) {
+        return res.redirect(`${secretPath}?tab=products&err=Discount+percentage+must+be+between+0+and+90`);
+      }
+
+      if (percent === 0) {
+        if (targetCategory === "ALL") {
+          await db.query("UPDATE products SET sale_price = price WHERE price > 0");
+        } else {
+          await db.query("UPDATE products SET sale_price = price WHERE price > 0 AND category = $1", [targetCategory]);
+        }
+        await forceSyncNow();
+        return res.redirect(`${secretPath}?tab=products&msg=Reset+all+product+discounts+back+to+regular+price`);
+      }
+
+      const multiplier = (100 - percent) / 100;
+      if (targetCategory === "ALL") {
+        await db.query("UPDATE products SET sale_price = GREATEST(1, ROUND(price * $1)) WHERE price > 0", [multiplier]);
+      } else {
+        await db.query(
+          "UPDATE products SET sale_price = GREATEST(1, ROUND(price * $1)) WHERE price > 0 AND category = $2",
+          [multiplier, targetCategory]
+        );
+      }
+      await forceSyncNow();
+      return res.redirect(`${secretPath}?tab=products&msg=${encodeURIComponent(`Applied ${percent}\% discount to${targetCategory === "ALL" ? "all products" : targetCategory}`)}`);
+    } catch (err) {
+      return res.redirect(`${secretPath}?tab=products&err=${encodeURIComponent(err.message)}`);
+    }
+  });
+
+  // Create Discount Voucher
+  router.post("/vouchers/create", async (req, res) => {
+    try {
+      const b = req.body || {};
+      const code = String(b.code || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "");
+      const discountType = b.discount_type === "fixed" ? "fixed" : "percent";
+      const discountValue = Number(b.discount_value || 0);
+      const minOrderAmount = Math.max(0, Number(b.min_order_amount || 0));
+      const maxDiscountAmount = b.max_discount_amount ? Number(b.max_discount_amount) : null;
+      const usageLimit = b.usage_limit ? parseInt(b.usage_limit, 10) : null;
+      const expiresAt = b.expires_at ? new Date(b.expires_at).toISOString() : null;
+
+      if (!code || code.length < 3) {
+        return res.redirect(`${secretPath}?tab=vouchers&err=Voucher+code+must+be+at+least+3+characters`);
+      }
+      if (discountValue <= 0 || (discountType === "percent" && discountValue > 90)) {
+        return res.redirect(`${secretPath}?tab=vouchers&err=Invalid+discount+value`);
+      }
+
+      await db.query(
+        `INSERT INTO discount_vouchers (
+          code, discount_type, discount_value, min_order_amount, max_discount_amount, usage_limit, expires_at, is_active
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE)
+        ON CONFLICT (code) DO UPDATE SET
+          discount_type = EXCLUDED.discount_type,
+          discount_value = EXCLUDED.discount_value,
+          min_order_amount = EXCLUDED.min_order_amount,
+          max_discount_amount = EXCLUDED.max_discount_amount,
+          usage_limit = EXCLUDED.usage_limit,
+          expires_at = EXCLUDED.expires_at,
+          is_active = TRUE`,
+        [code, discountType, discountValue, minOrderAmount, maxDiscountAmount, usageLimit, expiresAt]
+      );
+
+      return res.redirect(`${secretPath}?tab=vouchers&msg=${encodeURIComponent(`Saved discount voucher ${code}`)}`);
+    } catch (err) {
+      return res.redirect(`${secretPath}?tab=vouchers&err=${encodeURIComponent(err.message)}`);
+    }
+  });
+
+  router.post("/vouchers/:code/toggle", async (req, res) => {
+    const code = String(req.params.code || "").trim().toUpperCase();
+    try {
+      await db.query("UPDATE discount_vouchers SET is_active = NOT is_active WHERE code = $1", [code]);
+      return res.redirect(`${secretPath}?tab=vouchers&msg=${encodeURIComponent(`Toggled status for voucher ${code}`)}`);
+    } catch (err) {
+      return res.redirect(`${secretPath}?tab=vouchers&err=${encodeURIComponent(err.message)}`);
+    }
+  });
+
+  router.post("/vouchers/:code/delete", async (req, res) => {
+    const code = String(req.params.code || "").trim().toUpperCase();
+    try {
+      await db.query("DELETE FROM discount_vouchers WHERE code = $1", [code]);
+      return res.redirect(`${secretPath}?tab=vouchers&msg=${encodeURIComponent(`Deleted voucher ${code}`)}`);
+    } catch (err) {
+      return res.redirect(`${secretPath}?tab=vouchers&err=${encodeURIComponent(err.message)}`);
+    }
+  });
+
+  app.use(secretPath, router);
+}
+
+module.exports = {
+  registerAdminRoutes,
+  applyVoucherInTransaction
+};
