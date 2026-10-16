@@ -35,7 +35,7 @@ function money(val) {
   return `Rs. ${Number(val || 0).toLocaleString("en-PK")}`;
 }
 
-async function enqueueOrderNotifications({ orderNumber, customerName, phoneLocal, phoneE164, address, area, city, province, notes, paymentMethod, subtotal, shippingFee, total, items, voucherCode, discountAmount }) {
+async function enqueueOrderNotifications({ client, orderNumber, customerName, phoneLocal, phoneE164, address, area, city, province, notes, paymentMethod, subtotal, shippingFee, total, items, voucherCode, discountAmount  }) {
   const summaryItems = items.map(i => ({
     sku: i.sku,
     name: i.name,
@@ -65,13 +65,12 @@ async function enqueueOrderNotifications({ orderNumber, customerName, phoneLocal
     `*Total COD: ${money(total)}*`
   ].filter(Boolean).join("\n");
 
+  const runner = client || db;
   const ownerDedup = `order:${orderNumber}:owner_order_alert`;
-  await db.query(
-    `INSERT INTO notification_outbox (dedup_key, order_number, notification_type, sender_phone, recipient_phone, payload, status)
+  await runner.query(`INSERT INTO notification_outbox (dedup_key, order_number, notification_type, sender_phone, recipient_phone, payload, status)
      VALUES ($1, $2, 'owner_order_alert', $3, $4, $5, 'pending')
      ON CONFLICT (dedup_key) DO NOTHING`,
-    [ownerDedup, orderNumber, SENDER_NUMBER, OWNER_NUMBER, JSON.stringify({ messageText: ownerMessage })]
-  );
+    [ownerDedup, orderNumber, SENDER_NUMBER, OWNER_NUMBER, JSON.stringify({ messageText: ownerMessage })]);
 
   // 2. Customer Confirmation
   const customerMessage = [
@@ -90,12 +89,10 @@ async function enqueueOrderNotifications({ orderNumber, customerName, phoneLocal
   ].filter(Boolean).join("\n");
 
   const custDedup = `order:${orderNumber}:customer_order_confirmation`;
-  await db.query(
-    `INSERT INTO notification_outbox (dedup_key, order_number, notification_type, sender_phone, recipient_phone, payload, status)
+  await runner.query(`INSERT INTO notification_outbox (dedup_key, order_number, notification_type, sender_phone, recipient_phone, payload, status)
      VALUES ($1, $2, 'customer_order_confirmation', $3, $4, $5, 'pending')
      ON CONFLICT (dedup_key) DO NOTHING`,
-    [custDedup, orderNumber, SENDER_NUMBER, phoneE164, JSON.stringify({ messageText: customerMessage })]
-  );
+    [custDedup, orderNumber, SENDER_NUMBER, phoneE164, JSON.stringify({ messageText: customerMessage })]);
 }
 
 let isProcessing = false;

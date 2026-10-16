@@ -507,5 +507,16 @@
       }
     }
   </script>
+
+  <% if (typeof csrfToken !== "undefined" && csrfToken) { %>
+  <script>
+    document.querySelectorAll('form[method="POST"]').forEach(function(f) {
+      const act = f.getAttribute("action") || "";
+      if (act && !act.includes("/login") && !act.includes("_csrf=")) {
+        f.setAttribute("action", act + (act.includes("?") ? "&" : "?") + "_csrf=<%= csrfToken %>");
+      }
+    });
+  </script>
+  <% } %>
 </body>
 </html>

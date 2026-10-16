@@ -17,6 +17,7 @@ const {
   formatMoney
 } = require("./data/products");
 
+const helmet = require("helmet");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -48,6 +49,7 @@ app.disable("x-powered-by");
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.static(path.join(__dirname, "public")));
 
 // Template helpers. This must run BEFORE express.json(), so that even the error page
@@ -205,6 +207,9 @@ app.post("/api/cart/quote", (req, res) => {
 });
 
 // Step 10 (Hardened): Authoritative PostgreSQL Order Creation, Idempotency & Stock Deduction
+const { registerStep14Routes } = require("./db/security-and-status");
+registerStep14Routes(app, { db });
+
 app.post("/api/checkout", async (req, res) => {
   const body = req.body || {};
   const rawItems = Array.isArray(body.items) ? body.items : [];
@@ -292,7 +297,7 @@ app.post("/api/checkout", async (req, res) => {
     // 2. Lock product rows & calculate authoritative prices directly from PostgreSQL
     const skus = [...requestedMap.keys()];
     const lockRes = await client.query(
-      "SELECT sku, slug, name, category, price, sale_price, stock, status FROM products WHERE sku = ANY($1) FOR UPDATE",
+      "SELECT sku, slug, name, category, price, sale_price, stock, status, image_url FROM products WHERE sku = ANY($1) FOR UPDATE",
       [skus]
     );
     const dbProducts = new Map(lockRes.rows.map(r => [r.sku, r]));
@@ -387,8 +392,12 @@ app.post("/api/checkout", async (req, res) => {
         );
       }
     }
+    await enqueueOrderNotifications({
+      client,
+      orderNumber, customerName: fullName, phoneLocal: parsedPhone.local, phoneE164: parsedPhone.e164, address, area: area || null, city, province, notes: notes || null, paymentMethod: allowedPayment.label, subtotal, shippingFee, total, items: verifiedItems, voucherCode, discountAmount
+    });
     await client.query("COMMIT");
-    await forceSyncNow(); try { await enqueueOrderNotifications({ orderNumber, customerName: fullName, phoneLocal: parsedPhone.local, phoneE164: parsedPhone.e164, address, area: area || null, city, province, notes: notes || null, paymentMethod: allowedPayment.label, subtotal, shippingFee, total, items: verifiedItems, voucherCode, discountAmount }); setImmediate(() => processOutboxBatch()); } catch (e) { console.warn("Outbox err:", e.message); }
+    await forceSyncNow(); // Outbox enqueued atomically inside transaction before COMMIT setImmediate(() => processOutboxBatch()); } catch (e) { console.warn("Outbox err:", e.message); }
 
     // Minimal operational log without customer PII
     console.log(`✓ [Order Created] order=${orderNumber} items=${itemCount} total=${formatMoney(total)} waOptIn=${whatsappOptIn}`);
@@ -455,11 +464,10 @@ app.get("/health", async (req, res) => {
   }
 });
 
-const { registerStep14Routes } = require("./db/security-and-status");
-registerStep14Routes(app, { db });
-
 const { registerAdminRoutes, applyVoucherInTransaction } = require("./db/admin");
 registerAdminRoutes(app, { db, forceSyncNow, processOutboxBatch });
+
+app.get("/status", (req, res) => res.render("track-order", { pageTitle: "Track Your Order ? Aye Noor", pageDescription: "Check the status of your Aye Noor order." }));
 
 app.use((req, res) => {
   res.status(404).render("status", {

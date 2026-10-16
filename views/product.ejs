@@ -1,4 +1,4 @@
-﻿<%- include("partials/header") %>
+<%- include("partials/header") %>
 
 <section class="section product-detail-section">
   <nav class="breadcrumbs" aria-label="Breadcrumb">
@@ -21,26 +21,40 @@
         <% if (product.onSale) { %>
           <span class="product-badge">Sale</span>
         <% } %>
-        <span class="product-stage-glyph" id="stageGlyph" aria-hidden="true"><%= product.gallery[0].mark %></span>
-        <span class="product-stage-caption" id="stageCaption"><%= product.gallery[0].label %> · Sample placeholder</span>
+
+        <% if (product.image_url || product.imageUrl) { %>
+          <img
+            class="product-stage-photo"
+            src="<%= product.image_url || product.imageUrl %>"
+            alt="<%= product.name %>"
+            loading="eager"
+            decoding="async"
+            style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;z-index:1;padding:5%;"
+          >
+        <% } else { %>
+          <span class="product-stage-glyph" id="stageGlyph" aria-hidden="true"><%= product.gallery[0].mark %></span>
+          <span class="product-stage-caption" id="stageCaption"><%= product.gallery[0].label %> · Sample placeholder</span>
+        <% } %>
       </div>
 
-      <div class="product-thumbs" role="group" aria-label="Product views">
-        <% product.gallery.forEach((shot, idx) => { %>
-          <button
-            class="product-thumb <%= idx === 0 ? 'active' : '' %>"
-            type="button"
-            data-thumb-glyph="<%= shot.mark %>"
-            data-thumb-label="<%= shot.label %> · Sample placeholder"
-            aria-label="Show <%= shot.label %>"
-            aria-pressed="<%= idx === 0 ? 'true' : 'false' %>"
-            style="--productbg:<%= shot.bg %>;--glyph:<%= shot.glyph %>"
-          >
-            <span class="thumb-mark" aria-hidden="true"><%= shot.mark %></span>
-            <span class="thumb-text"><%= shot.label %></span>
-          </button>
-        <% }) %>
-      </div>
+      <% if (!(product.image_url || product.imageUrl)) { %>
+        <div class="product-thumbs" role="group" aria-label="Product views">
+          <% product.gallery.forEach((shot, idx) => { %>
+            <button
+              class="product-thumb <%= idx === 0 ? 'active' : '' %>"
+              type="button"
+              data-thumb-glyph="<%= shot.mark %>"
+              data-thumb-label="<%= shot.label %> · Sample placeholder"
+              aria-label="Show <%= shot.label %>"
+              aria-pressed="<%= idx === 0 ? 'true' : 'false' %>"
+              style="--productbg:<%= shot.bg %>;--glyph:<%= shot.glyph %>"
+            >
+              <span class="thumb-mark" aria-hidden="true"><%= shot.mark %></span>
+              <span class="thumb-text"><%= shot.label %></span>
+            </button>
+          <% }) %>
+        </div>
+      <% } %>
     </div>
 
     <div class="product-summary">
@@ -61,7 +75,7 @@
 
       <p class="stock-pill <%= product.stock > 0 ? 'in-stock' : 'out-stock' %>">
         <span class="stock-dot" aria-hidden="true"></span>
-        <%= product.stock > 0 ? `In stock (${product.stock} sample units available)` : 'Out of stock' %>
+        <%= product.stock > 0 ? 'In stock' : 'Out of stock' %>
       </p>
 
       <p class="detail-description"><%= product.description %></p>

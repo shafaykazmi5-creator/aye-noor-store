@@ -40,15 +40,26 @@ function getSecretPath() {
   return p.replace(/\/+$/, "");
 }
 
+const activeSessions = new Map();
+const SCRYPT_SALT = crypto.randomBytes(16);
+
 function getAdminPassword() {
-  return process.env.ADMIN_PASSWORD || "AyeNoorAdmin2026!";
+  const pwd = String(process.env.ADMIN_PASSWORD || "").trim();
+  return pwd.length >= 8 ? pwd : null;
 }
 
-function getExpectedToken() {
-  return crypto
-    .createHmac("sha256", getAdminPassword())
-    .update("ayenoor-secret-admin:" + getSecretPath())
-    .digest("hex");
+function verifyMagicBytes(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) return false;
+  const fd = fs.openSync(filePath, "r");
+  const buf = Buffer.alloc(12);
+  const bytesRead = fs.readSync(fd, buf, 0, 12, 0);
+  fs.closeSync(fd);
+  if (bytesRead < 4) return false;
+  const isJpeg = buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF;
+  const isPng = buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47;
+  const isGif = buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38;
+  const isWebp = bytesRead >= 12 && buf.slice(0, 4).toString("ascii") === "RIFF" && buf.slice(8, 12).toString("ascii") === "WEBP";
+  return isJpeg || isPng || isGif || isWebp;
 }
 
 function parseCookies(req) {
@@ -64,20 +75,27 @@ function parseCookies(req) {
   return list;
 }
 
-function isAuthenticated(req) {
+function getSession(req) {
   const cookies = parseCookies(req);
   const token = cookies[COOKIE_NAME] || "";
-  const expected = getExpectedToken();
-  const bufA = Buffer.from(String(token));
-  const bufB = Buffer.from(String(expected));
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
+  if (!token || !activeSessions.has(token)) return null;
+  const sess = activeSessions.get(token);
+  if (Date.now() > sess.expiresAt) {
+    activeSessions.delete(token);
+    return null;
+  }
+  return sess;
+}
+
+function isAuthenticated(req) {
+  return Boolean(getSession(req));
 }
 
 function safeComparePassword(input, actual) {
-  const hashA = crypto.createHash("sha256").update(String(input || "")).digest();
-  const hashB = crypto.createHash("sha256").update(String(actual || "")).digest();
-  return crypto.timingSafeEqual(hashA, hashB);
+  if (!actual || !input) return false;
+  const keyA = crypto.scryptSync(String(input), SCRYPT_SALT, 64);
+  const keyB = crypto.scryptSync(String(actual), SCRYPT_SALT, 64);
+  return crypto.timingSafeEqual(keyA, keyB);
 }
 
 function slugify(text) {
@@ -244,6 +262,7 @@ function registerAdminRoutes(app, { db, forceSyncNow, processOutboxBatch }) {
   });
 
   const router = express.Router();
+  router.use((_req, res, next) => { res.setHeader("X-Robots-Tag", "noindex, nofollow"); next(); });
   router.use(express.urlencoded({ extended: true }));
   router.use(express.json());
 
@@ -268,32 +287,55 @@ function registerAdminRoutes(app, { db, forceSyncNow, processOutboxBatch }) {
       return res.redirect(`${secretPath}/login?error=${encodeURIComponent("Too many failed attempts. Please wait 15 minutes.")}`);
     }
 
+    const configuredPassword = getAdminPassword();
+    if (!configuredPassword) {
+      return res.redirect(`${secretPath}/login?error=${encodeURIComponent("ADMIN_PASSWORD is not configured in .env")}`);
+    }
     const password = (req.body && req.body.password) || "";
-    if (!safeComparePassword(password, getAdminPassword())) {
+    if (!safeComparePassword(password, configuredPassword)) {
       rec.count += 1;
       loginAttempts.set(ip, rec);
       return res.redirect(`${secretPath}/login?error=${encodeURIComponent("Incorrect admin password.")}`);
     }
 
     loginAttempts.delete(ip);
-    const token = getExpectedToken();
+    const token = crypto.randomBytes(32).toString("hex");
+    const csrfToken = crypto.randomBytes(24).toString("hex");
+    activeSessions.set(token, { csrfToken, expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000 });
+    const secureFlag = process.env.NODE_ENV === "production" ? "; Secure" : "";
     res.setHeader(
       "Set-Cookie",
-      `${COOKIE_NAME}=${token}; HttpOnly; Path=${secretPath}; SameSite=Lax; Max-Age=604800`
+      `${COOKIE_NAME}=${token}; HttpOnly; Path=${secretPath}; SameSite=Lax; Max-Age=604800${secureFlag}`
     );
     return res.redirect(secretPath);
   });
 
   router.post("/logout", (req, res) => {
+    const sess = getSession(req);
+    const sentToken = (req.query && req.query._csrf) || (req.body && req.body._csrf) || req.headers["x-csrf-token"];
+    if (sess && (!sentToken || sentToken !== sess.csrfToken)) {
+      return res.status(403).send("Invalid or missing CSRF token. Please refresh the admin page and try again.");
+    }
+    const cookies = parseCookies(req);
+    if (cookies[COOKIE_NAME]) activeSessions.delete(cookies[COOKIE_NAME]);
+    const secureFlag = process.env.NODE_ENV === "production" ? "; Secure" : "";
     res.setHeader(
       "Set-Cookie",
-      `${COOKIE_NAME}=; HttpOnly; Path=${secretPath}; SameSite=Lax; Max-Age=0`
+      `${COOKIE_NAME}=; HttpOnly; Path=${secretPath}; SameSite=Lax; Max-Age=0${secureFlag}`
     );
     return res.redirect(`${secretPath}/login`);
   });
 
   router.use((req, res, next) => {
-    if (!isAuthenticated(req)) return res.redirect(`${secretPath}/login`);
+    const sess = getSession(req);
+    if (!sess) return res.redirect(`${secretPath}/login`);
+    res.locals.csrfToken = sess.csrfToken;
+    if (req.method === "POST") {
+      const sentToken = (req.query && req.query._csrf) || (req.body && req.body._csrf) || req.headers["x-csrf-token"];
+      if (!sentToken || sentToken !== sess.csrfToken) {
+        return res.status(403).send("Invalid or missing CSRF token. Please refresh the admin page and try again.");
+      }
+    }
     next();
   });
 
@@ -530,6 +572,10 @@ function registerAdminRoutes(app, { db, forceSyncNow, processOutboxBatch }) {
       const weight = String(b.weight || "").trim();
       const dimensions = String(b.dimensions || "").trim();
       const description = String(b.description || "").trim();
+      if (req.file && !verifyMagicBytes(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+        return res.redirect(`${secretPath}?tab=products&err=Uploaded+file+is+not+a+valid+image`);
+      }
       const imageUrl = req.file ? `/uploads/products/${req.file.filename}` : "";
 
       if (!sku || !name) {

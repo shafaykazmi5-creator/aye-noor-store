@@ -1,4 +1,4 @@
-﻿<article
+<article
   class="product-card"
   data-sku="<%= product.sku %>"
   data-category="<%= product.category %>"
@@ -12,12 +12,25 @@
     aria-label="View <%= product.name %> details"
   >
     <div class="product-visual" style="--productbg:<%= product.visual.bg %>;--glyph:<%= product.visual.glyph %>">
+      <% if (product.image_url || product.imageUrl) { %>
+        <img
+          class="product-card-photo"
+          src="<%= product.image_url || product.imageUrl %>"
+          alt="<%= product.name %>"
+          loading="lazy"
+          decoding="async"
+          style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;z-index:1;padding:6%;"
+        >
+      <% } else { %>
+        <span class="product-glyph" aria-hidden="true"><%= product.visual.mark %></span>
+      <% } %>
+
       <% if (product.onSale) { %>
         <span class="product-badge">Sale</span>
       <% } %>
-      <span class="product-glyph" aria-hidden="true"><%= product.visual.mark %></span>
     </div>
   </a>
+
   <div class="product-info">
     <span class="product-category"><%= product.category %></span>
     <h3><a class="product-title-link" href="/product/<%= product.slug %>"><%= product.name %></a></h3>
