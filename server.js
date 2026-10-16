@@ -455,6 +455,62 @@ app.post("/api/contact", async (req, res) => {
   }
 });
 
+function getSitemapSiteUrl() {
+  const configured = String(process.env.SITE_URL || "").trim();
+  const candidate = configured || (process.env.NODE_ENV !== "production" ? `http://localhost:${PORT}` : "");
+  if (!candidate) return "";
+  try {
+    const parsed = new URL(candidate);
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.pathname !== "/" || parsed.search || parsed.hash) return "";
+    return parsed.origin;
+  } catch {
+    return "";
+  }
+}
+
+app.get("/robots.txt", (req, res) => {
+  const siteUrl = getSitemapSiteUrl();
+  const lines = [
+    "User-agent: *",
+    "Allow: /",
+    "Disallow: /api/",
+    "Disallow: /health"
+  ];
+  if (siteUrl) lines.push(`Sitemap: ${siteUrl}/sitemap.xml`);
+  res.type("text/plain").send(lines.join("\n") + "\n");
+});
+
+app.get("/sitemap.xml", (req, res) => {
+  const siteUrl = getSitemapSiteUrl();
+  if (!siteUrl) {
+    return res.status(503).type("text/plain").send("Configure SITE_URL with your public website origin to enable the sitemap.");
+  }
+
+  const paths = [
+    "/", "/shop", "/about", "/contact", "/faq", "/status",
+    ...Object.keys(POLICIES).map(key => `/${key}`),
+    ...getActiveProducts()
+      .filter(product => product && product.slug)
+      .map(product => `/product/${encodeURIComponent(product.slug)}`)
+  ];
+  const uniquePaths = [...new Set(paths)];
+  const escapeXml = value => String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+
+  const entries = uniquePaths.map(route => {
+    const loc = new URL(route, `${siteUrl}/`).toString();
+    return `  <url>\n    <loc>${escapeXml(loc)}</loc>\n  </url>`;
+  });
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries.join("\n")}\n</urlset>`;
+  res.set("Cache-Control", "public, max-age=3600");
+  res.type("application/xml").send(xml);
+});
+
 app.get("/health", async (req, res) => {
   try {
     await db.query("SELECT 1");

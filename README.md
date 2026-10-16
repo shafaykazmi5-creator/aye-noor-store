@@ -1,16 +1,15 @@
-# Aye Noor website
+# Aye Noor - Handcrafted Candles Storefront
 
-Plain HTML/CSS/JavaScript storefront served by a Node.js + Express server.
-PostgreSQL, the admin panel, orders and WhatsApp notifications come in later steps.
+100% Made-to-Order e-commerce storefront built with Node.js, Express, EJS, PostgreSQL, two-way Excel catalog sync, and automated WhatsApp order notifications.
 
-## Run it (Windows PowerShell / VS Code terminal)
-1. `npm.cmd install`   (first time only, or after package.json changes)
-2. `npm.cmd run dev`   (starts the site and restarts it when you edit server.js)
-3. Open http://localhost:3000
-4. Stop the server with Ctrl + C
+## Required Environment Variables (.env)
+- PORT=3000
+- DATABASE_URL=postgresql://...
+- ADMIN_SECRET_PATH=/an-panel-7x9k
+- ADMIN_PASSWORD=<strong-password-min-8-chars>
+- OWNER_WHATSAPP_NUMBER=923325007200
+- SITE_URL=http://localhost:3000 (Set to your live https:// domain in production)
 
-## Folders
-- `server.js`  the server
-- `public/`    everything visitors can see (index.html, styles.css, script.js, products.js)
-
-Demo data only: no real checkout, payments or WhatsApp messages yet.
+## Commands
+- npm run dev - Start storefront, outbox worker, and two-way Excel sync
+- node db/sync-products.js - Manually sync Aye_Noor_Product_Catalog.xlsx with PostgreSQL

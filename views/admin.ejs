@@ -83,6 +83,7 @@
         <p style="color:var(--muted);font-size:0.88rem;">This URL is hidden from the public. Enter your <code>ADMIN_PASSWORD</code> to unlock.</p>
         <% if (error) { %><div class="banner err"><%= error %></div><% } %>
         <form action="<%= secretPath %>/login" method="POST" style="display:grid;gap:0.85rem;">
+          <input type="hidden" name="_csrf" value="<%= loginCsrfToken %>">
           <input type="password" name="password" placeholder="Admin Password" required autofocus>
           <button type="submit">Unlock Admin Panel →</button>
         </form>

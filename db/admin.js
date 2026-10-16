@@ -41,6 +41,7 @@ function getSecretPath() {
 }
 
 const activeSessions = new Map();
+const loginCsrfTokens = new Map();
 const SCRYPT_SALT = crypto.randomBytes(16);
 
 function getAdminPassword() {
@@ -268,14 +269,31 @@ function registerAdminRoutes(app, { db, forceSyncNow, processOutboxBatch }) {
 
   router.get("/login", (req, res) => {
     if (isAuthenticated(req)) return res.redirect(secretPath);
+    const now = Date.now();
+    for (const [token, expiresAt] of loginCsrfTokens) {
+      if (expiresAt <= now) loginCsrfTokens.delete(token);
+    }
+    if (loginCsrfTokens.size >= 1000) {
+      const oldestToken = loginCsrfTokens.keys().next().value;
+      if (oldestToken) loginCsrfTokens.delete(oldestToken);
+    }
+    const loginCsrfToken = crypto.randomBytes(32).toString("hex");
+    loginCsrfTokens.set(loginCsrfToken, now + 15 * 60 * 1000);
     res.render("admin", {
       viewMode: "login",
       secretPath,
-      error: req.query.error || null
+      error: req.query.error || null,
+      loginCsrfToken
     });
   });
 
   router.post("/login", (req, res) => {
+    const submittedLoginCsrfToken = String((req.body && req.body._csrf) || "");
+    const loginCsrfExpiresAt = loginCsrfTokens.get(submittedLoginCsrfToken);
+    loginCsrfTokens.delete(submittedLoginCsrfToken);
+    if (!loginCsrfExpiresAt || loginCsrfExpiresAt < Date.now()) {
+      return res.status(403).send("Login form expired or invalid. Refresh the page and try again.");
+    }
     const ip = req.ip || "local";
     const now = Date.now();
     const rec = loginAttempts.get(ip) || { count: 0, resetAt: now + 15 * 60 * 1000 };

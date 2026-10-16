@@ -37,23 +37,6 @@ function registerStep14Routes(app, { db }) {
     next();
   });
 
-  app.get("/robots.txt", (req, res) => {
-    const secret = String(process.env.ADMIN_SECRET_PATH || "/an-panel-7x9k").trim();
-    res.type("text/plain").send(`User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: ${req.protocol}://${req.get("host")}/sitemap.xml\n`);
-  });
-
-  app.get("/sitemap.xml", async (req, res) => {
-    try {
-      const base = `${req.protocol}://${req.get("host")}`;
-      const pRes = await db.query("SELECT slug FROM products WHERE status = 'Active' ORDER BY sku ASC");
-      const urls = ["/", "/shop", "/about", "/contact", "/faq", "/status", ...pRes.rows.map(r => `/product/${r.slug}`)];
-      const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
-        urls.map(u => `  <url><loc>${base}${u}</loc></url>`).join("\n") + "\n</urlset>";
-      res.type("application/xml").send(xml);
-    } catch (e) {
-      res.status(500).end();
-    }
-  });
   const checkoutLimiter = createRateLimiter({
     windowMs: 10 * 60 * 1000,
     max: 12,
